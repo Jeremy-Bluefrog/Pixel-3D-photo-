@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -72,16 +73,20 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
     init {
         sensorManager.startListening()
         seedDatabaseIfEmpty()
+        PresetSamples.samplePhotos.firstOrNull()?.let { selectPhoto(it) }
     }
 
     private fun seedDatabaseIfEmpty() {
         viewModelScope.launch {
-            repository.allPhotos.collect { list ->
+            try {
+                val list = repository.allPhotos.first()
                 if (list.isEmpty()) {
                     PresetSamples.samplePhotos.forEach { photo ->
                         repository.savePhoto(photo)
                     }
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
