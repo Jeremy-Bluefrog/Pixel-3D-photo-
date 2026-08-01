@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.ViewInAr
@@ -87,6 +88,7 @@ fun HomeScreen(
     val sourceBitmap by viewModel.currentSourceBitmap.collectAsState()
     val depthBitmap by viewModel.currentDepthBitmap.collectAsState()
     val foregroundBitmap by viewModel.currentForegroundBitmap.collectAsState()
+    val backgroundBitmap by viewModel.currentBackgroundBitmap.collectAsState()
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -261,36 +263,10 @@ fun HomeScreen(
                                         tiltData = tiltData,
                                         customDepthBitmap = depthBitmap,
                                         foregroundBitmap = foregroundBitmap,
+                                        backgroundBitmap = backgroundBitmap,
                                         sourceBitmap = sourceBitmap,
                                         modifier = Modifier.fillMaxWidth()
                                     )
-
-                                    // Floating Gyro Spatial Indicator Pill
-                                    Surface(
-                                        shape = RoundedCornerShape(20.dp),
-                                        color = Color(0xCC000000),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x40FFFFFF)),
-                                        modifier = Modifier.padding(12.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.ScreenRotation,
-                                                contentDescription = null,
-                                                tint = NeonCyan,
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = "陀螺儀 3D 視差",
-                                                color = Color.White,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                    }
                                 }
                             }
                         }

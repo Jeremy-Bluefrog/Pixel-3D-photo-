@@ -4,12 +4,15 @@ import android.graphics.Bitmap
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,11 +28,9 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.example.ml.DepthMapGenerator
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
@@ -37,7 +38,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
@@ -51,7 +51,6 @@ import com.example.ui.theme.GlassBorder
 import com.example.ui.theme.GlassSurface
 import com.example.ui.theme.NeonCyan
 import com.example.ui.theme.PixelDarkSurface
-import com.example.ui.theme.SpatialAmber
 import kotlin.math.roundToInt
 
 @Composable
@@ -61,11 +60,16 @@ fun Parallax3DCard(
     renderMode: Render3DMode = Render3DMode.PARALLAX_TILT,
     customDepthBitmap: Bitmap? = null,
     foregroundBitmap: Bitmap? = null,
+    backgroundBitmap: Bitmap? = null,
     sourceBitmap: Bitmap? = null,
     modifier: Modifier = Modifier
 ) {
     val effectiveRoll = tiltData.roll
     val effectivePitch = tiltData.pitch
+
+    // Touch interactive drag state
+    var touchRollOffset by remember { mutableFloatStateOf(0f) }
+    var touchPitchOffset by remember { mutableFloatStateOf(0f) }
 
     // Wiggle stereogram animation timer
     val wiggleAnim = remember { Animatable(0f) }
@@ -74,91 +78,165 @@ fun Parallax3DCard(
             wiggleAnim.animateTo(
                 targetValue = 1f,
                 animationSpec = infiniteRepeatable(
-                    animation = tween(120, easing = LinearEasing),
+                    animation = tween(110, easing = LinearEasing),
                     repeatMode = RepeatMode.Reverse
                 )
             )
         }
     }
 
-    val currentRoll = if (renderMode == Render3DMode.WIGGLE_STEREOGRAM) {
-        if (wiggleAnim.value > 0.5f) 0.8f else -0.8f
-    } else effectiveRoll
+    val rawRoll = if (renderMode == Render3DMode.WIGGLE_STEREOGRAM) {
+        if (wiggleAnim.value > 0.5f) 0.9f else -0.9f
+    } else {
+        effectiveRoll + touchRollOffset
+    }
+
+    val rawPitch = if (renderMode == Render3DMode.WIGGLE_STEREOGRAM) {
+        0f
+    } else {
+        effectivePitch + touchPitchOffset
+    }
+
+    // Smooth physics spring interpolation for realistic fluid spatial movement
+    val animatedRoll by animateFloatAsState(
+        targetValue = rawRoll.coerceIn(-2f, 2f),
+        animationSpec = spring(stiffness = Spring.StiffnessLow, dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "animatedRoll"
+    )
+    val animatedPitch by animateFloatAsState(
+        targetValue = rawPitch.coerceIn(-2f, 2f),
+        animationSpec = spring(stiffness = Spring.StiffnessLow, dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "animatedPitch"
+    )
 
     val depthMultiplier = photo.depthIntensity
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio( photo.width.toFloat() / photo.height.toFloat().coerceAtLeast(1f) )
+            .aspectRatio(photo.width.toFloat() / photo.height.toFloat().coerceAtLeast(1f))
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragEnd = {
+                        touchRollOffset = 0f
+                        touchPitchOffset = 0f
+                    },
+                    onDragCancel = {
+                        touchRollOffset = 0f
+                        touchPitchOffset = 0f
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        touchRollOffset = (touchRollOffset + dragAmount.x / 180f).coerceIn(-1.5f, 1.5f)
+                        touchPitchOffset = (touchPitchOffset + dragAmount.y / 180f).coerceIn(-1.5f, 1.5f)
+                    }
+                )
+            }
+            .graphicsLayer {
+                // True 3D perspective spatial tilt on card container
+                rotationY = animatedRoll * 12f * depthMultiplier
+                rotationX = -animatedPitch * 12f * depthMultiplier
+                cameraDistance = 16f * density
+            }
             .clip(RoundedCornerShape(24.dp))
             .background(PixelDarkSurface)
             .border(1.5.dp, GlassBorder, RoundedCornerShape(24.dp))
     ) {
         when (renderMode) {
             Render3DMode.PARALLAX_TILT, Render3DMode.WIGGLE_STEREOGRAM -> {
-                // Background Layer (Moves opposite & slower)
-                val bgOffsetX = (-currentRoll * 12 * depthMultiplier).dp
-                val bgOffsetY = (-effectivePitch * 12 * depthMultiplier).dp
+                // Background Layer (Moves opposite & deeper into Z-space)
+                val bgOffsetX = (-animatedRoll * 16 * depthMultiplier).dp
+                val bgOffsetY = (-animatedPitch * 16 * depthMultiplier).dp
 
-                // Midground Layer (Moves slightly)
-                val midOffsetX = (currentRoll * 8 * depthMultiplier).dp
-                val midOffsetY = (effectivePitch * 8 * depthMultiplier).dp
+                // Midground Layer (Slight movement)
+                val midOffsetX = (animatedRoll * 6 * depthMultiplier).dp
+                val midOffsetY = (animatedPitch * 6 * depthMultiplier).dp
 
-                // Foreground Layer (Moves faster towards user)
-                val fgOffsetX = (currentRoll * 28 * depthMultiplier).dp
-                val fgOffsetY = (effectivePitch * 28 * depthMultiplier).dp
+                // Foreground Layer (Projects forward towards viewer)
+                val fgOffsetX = (animatedRoll * 34 * depthMultiplier).dp
+                val fgOffsetY = (animatedPitch * 34 * depthMultiplier).dp
 
-                // Simulated or actual source image
+                // Soft dynamic drop shadow offset for floating foreground cutout
+                val shadowOffsetX = (animatedRoll * 18 * depthMultiplier + 6).dp
+                val shadowOffsetY = (animatedPitch * 18 * depthMultiplier + 8).dp
+
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            scaleX = 1.15f
-                            scaleY = 1.15f
+                            scaleX = 1.22f
+                            scaleY = 1.22f
                         }
                 ) {
-                    // Background layer frame
+                    // 1. Background layer frame (Deeper back Z-plane with subtle darkness)
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .offset { IntOffset(bgOffsetX.toPx().roundToInt(), bgOffsetY.toPx().roundToInt()) }
                     ) {
-                        if (sourceBitmap != null) {
+                        val bgSource = backgroundBitmap ?: sourceBitmap
+                        if (bgSource != null) {
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 drawImage(
-                                    image = sourceBitmap.asImageBitmap(),
+                                    image = bgSource.asImageBitmap(),
                                     dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt()),
                                     colorFilter = ColorFilter.colorMatrix(
-                                        ColorMatrix().apply { setToScale(0.88f, 0.88f, 0.92f, 1f) }
+                                        ColorMatrix().apply {
+                                            setToScale(0.82f, 0.82f, 0.88f, 1f)
+                                        }
+                                    )
+                                )
+                                // Depth vignette
+                                drawRect(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.45f)),
+                                        center = Offset(size.width / 2f, size.height / 2f),
+                                        radius = size.width * 0.75f
                                     )
                                 )
                             }
                         } else {
-                            // High-tech fallback canvas backdrop
-                            PlaceholderDepthArt(photo = photo, layer = "BG", tiltX = currentRoll, tiltY = effectivePitch)
+                            PlaceholderDepthArt(photo = photo, layer = "BG", tiltX = animatedRoll, tiltY = animatedPitch)
                         }
                     }
 
-                    // Midground layer frame
+                    // 2. Midground layer frame
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .offset { IntOffset(midOffsetX.toPx().roundToInt(), midOffsetY.toPx().roundToInt()) }
                     ) {
-                        if (sourceBitmap != null && foregroundBitmap == null) {
+                        val midSource = backgroundBitmap ?: sourceBitmap
+                        if (midSource != null && foregroundBitmap == null) {
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 drawImage(
-                                    image = sourceBitmap.asImageBitmap(),
+                                    image = midSource.asImageBitmap(),
                                     dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt())
                                 )
                             }
                         } else if (sourceBitmap == null) {
-                            PlaceholderDepthArt(photo = photo, layer = "MID", tiltX = currentRoll, tiltY = effectivePitch)
+                            PlaceholderDepthArt(photo = photo, layer = "MID", tiltX = animatedRoll, tiltY = animatedPitch)
                         }
                     }
 
-                    // Foreground Cutout Layer
+                    // 3. Floating Foreground Shadow Layer
+                    if (foregroundBitmap != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset { IntOffset(shadowOffsetX.toPx().roundToInt(), shadowOffsetY.toPx().roundToInt()) }
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                drawImage(
+                                    image = foregroundBitmap.asImageBitmap(),
+                                    dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt()),
+                                    colorFilter = ColorFilter.tint(Color.Black.copy(alpha = 0.4f), BlendMode.SrcIn)
+                                )
+                            }
+                        }
+                    }
+
+                    // 4. Floating Foreground Cutout Subject (Pop-out 3D Effect)
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -172,35 +250,52 @@ fun Parallax3DCard(
                                 )
                             }
                         } else if (sourceBitmap == null) {
-                            PlaceholderDepthArt(photo = photo, layer = "FG", tiltX = currentRoll, tiltY = effectivePitch)
+                            PlaceholderDepthArt(photo = photo, layer = "FG", tiltX = animatedRoll, tiltY = animatedPitch)
                         }
                     }
                 }
 
-                // Specular Light Sheen Overlay on Tilt
+                // Dynamic Realistic Light & Specular Sheen Overlay
                 Canvas(modifier = Modifier.fillMaxSize()) {
-                    val sheenX = (size.width / 2f) + (currentRoll * size.width * 0.4f)
-                    val sheenY = (size.height / 2f) + (effectivePitch * size.height * 0.4f)
+                    val sheenX = (size.width / 2f) + (animatedRoll * size.width * 0.45f)
+                    val sheenY = (size.height / 2f) + (animatedPitch * size.height * 0.45f)
 
+                    // Specular light spot
                     drawCircle(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                Color.White.copy(alpha = 0.22f),
-                                Color.White.copy(alpha = 0.05f),
+                                Color.White.copy(alpha = 0.28f),
+                                Color.White.copy(alpha = 0.08f),
                                 Color.Transparent
                             ),
                             center = Offset(sheenX, sheenY),
-                            radius = size.width * 0.6f
+                            radius = size.width * 0.65f
                         ),
-                        radius = size.width * 0.6f,
+                        radius = size.width * 0.65f,
                         center = Offset(sheenX, sheenY)
+                    )
+
+                    // Linear holographic lens sweep reflection
+                    val sweepAngle = (animatedRoll + animatedPitch) * 20f
+                    drawLine(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.White.copy(alpha = 0.18f),
+                                Color.Transparent
+                            ),
+                            start = Offset(sheenX - size.width * 0.5f, sheenY - size.height * 0.5f),
+                            end = Offset(sheenX + size.width * 0.5f, sheenY + size.height * 0.5f)
+                        ),
+                        start = Offset(0f, sheenY - size.height * 0.3f),
+                        end = Offset(size.width, sheenY + size.height * 0.3f),
+                        strokeWidth = 18f
                     )
                 }
             }
 
             Render3DMode.ANAGLYPH_3D -> {
-                // Red / Cyan 3D glasses offset
-                val offsetPx = (currentRoll * 20 * depthMultiplier).dp
+                val offsetPx = (animatedRoll * 24 * depthMultiplier).dp
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     // Red channel left offset
@@ -217,7 +312,7 @@ fun Parallax3DCard(
                                 )
                             }
                         } else {
-                            PlaceholderDepthArt(photo = photo, layer = "ANAGLYPH_RED", tiltX = currentRoll, tiltY = effectivePitch)
+                            PlaceholderDepthArt(photo = photo, layer = "ANAGLYPH_RED", tiltX = animatedRoll, tiltY = animatedPitch)
                         }
                     }
 
@@ -235,7 +330,7 @@ fun Parallax3DCard(
                                 )
                             }
                         } else {
-                            PlaceholderDepthArt(photo = photo, layer = "ANAGLYPH_CYAN", tiltX = currentRoll, tiltY = effectivePitch)
+                            PlaceholderDepthArt(photo = photo, layer = "ANAGLYPH_CYAN", tiltX = animatedRoll, tiltY = animatedPitch)
                         }
                     }
                 }
@@ -248,14 +343,14 @@ fun Parallax3DCard(
                             drawImage(image = customDepthBitmap.asImageBitmap())
                         }
                     } else {
-                        PlaceholderDepthArt(photo = photo, layer = "DEPTH_MAP", tiltX = currentRoll, tiltY = effectivePitch)
+                        PlaceholderDepthArt(photo = photo, layer = "DEPTH_MAP", tiltX = animatedRoll, tiltY = animatedPitch)
                     }
                 }
             }
 
             Render3DMode.LAYER_CUTOUT -> {
-                val fgOffsetX = (currentRoll * 35 * depthMultiplier).dp
-                val fgOffsetY = (effectivePitch * 35 * depthMultiplier).dp
+                val fgOffsetX = (animatedRoll * 42 * depthMultiplier).dp
+                val fgOffsetY = (animatedPitch * 42 * depthMultiplier).dp
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     // Dark background grid
@@ -289,35 +384,14 @@ fun Parallax3DCard(
                                 drawImage(image = foregroundBitmap.asImageBitmap())
                             }
                         } else {
-                            PlaceholderDepthArt(photo = photo, layer = "FG_CUTOUT", tiltX = currentRoll, tiltY = effectivePitch)
+                            PlaceholderDepthArt(photo = photo, layer = "FG_CUTOUT", tiltX = animatedRoll, tiltY = animatedPitch)
                         }
                     }
                 }
             }
         }
 
-        // Live Mode Indicator Tag
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(12.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(GlassSurface)
-                .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
-                .padding(horizontal = 10.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = when (renderMode) {
-                    Render3DMode.PARALLAX_TILT -> "裸視 3D 視差"
-                    Render3DMode.WIGGLE_STEREOGRAM -> "3D 搖擺立體圖 (12Hz)"
-                    Render3DMode.ANAGLYPH_3D -> "紅藍 3D 眼鏡模式"
-                    Render3DMode.DEPTH_MAP_HEATMAP -> "AI 深度熱力圖"
-                    Render3DMode.LAYER_CUTOUT -> "前景物體分離層"
-                },
-                color = NeonCyan,
-                fontSize = 11.sp
-            )
-        }
+
     }
 }
 
