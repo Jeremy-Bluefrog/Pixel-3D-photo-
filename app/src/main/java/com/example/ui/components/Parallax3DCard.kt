@@ -22,8 +22,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.example.ml.DepthMapGenerator
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,6 +87,25 @@ fun Parallax3DCard(
 
     val depthMultiplier = photo.depthIntensity
 
+    // Live AI Depth-Displaced Parallax Bitmap driven by Gyroscope
+    var gyroDisplacedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(sourceBitmap, customDepthBitmap, currentRoll, effectivePitch, photo.depthIntensity, renderMode) {
+        if (sourceBitmap != null && customDepthBitmap != null &&
+            (renderMode == Render3DMode.PARALLAX_TILT || renderMode == Render3DMode.WIGGLE_STEREOGRAM)
+        ) {
+            gyroDisplacedBitmap = DepthMapGenerator.applyGyroDepthParallax(
+                sourceBitmap = sourceBitmap,
+                depthBitmap = customDepthBitmap,
+                roll = currentRoll,
+                pitch = effectivePitch,
+                depthIntensity = photo.depthIntensity
+            )
+        } else {
+            gyroDisplacedBitmap = null
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -95,82 +116,101 @@ fun Parallax3DCard(
     ) {
         when (renderMode) {
             Render3DMode.PARALLAX_TILT, Render3DMode.WIGGLE_STEREOGRAM -> {
-                // Background Layer (Moves opposite & slower)
-                val bgOffsetX = (-currentRoll * 12 * depthMultiplier).dp
-                val bgOffsetY = (-effectivePitch * 12 * depthMultiplier).dp
-
-                // Midground Layer (Moves slightly)
-                val midOffsetX = (currentRoll * 8 * depthMultiplier).dp
-                val midOffsetY = (effectivePitch * 8 * depthMultiplier).dp
-
-                // Foreground Layer (Moves faster towards user)
-                val fgOffsetX = (currentRoll * 28 * depthMultiplier).dp
-                val fgOffsetY = (effectivePitch * 28 * depthMultiplier).dp
-
-                // Simulated or actual source image
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            scaleX = 1.15f
-                            scaleY = 1.15f
-                        }
-                ) {
-                    // Background layer frame
+                if (gyroDisplacedBitmap != null) {
+                    // Pixel-level 3D Parallax displacement using AI Depth Map & Gyro Tilt
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .offset { IntOffset(bgOffsetX.toPx().roundToInt(), bgOffsetY.toPx().roundToInt()) }
+                            .graphicsLayer {
+                                scaleX = 1.08f
+                                scaleY = 1.08f
+                            }
                     ) {
-                        if (sourceBitmap != null) {
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                drawImage(
-                                    image = sourceBitmap.asImageBitmap(),
-                                    dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt()),
-                                    colorFilter = ColorFilter.colorMatrix(
-                                        ColorMatrix().apply { setToScale(0.88f, 0.88f, 0.92f, 1f) }
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            drawImage(
+                                image = gyroDisplacedBitmap!!.asImageBitmap(),
+                                dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt())
+                            )
+                        }
+                    }
+                } else {
+                    // Background Layer (Moves opposite & slower)
+                    val bgOffsetX = (-currentRoll * 12 * depthMultiplier).dp
+                    val bgOffsetY = (-effectivePitch * 12 * depthMultiplier).dp
+
+                    // Midground Layer (Moves slightly)
+                    val midOffsetX = (currentRoll * 8 * depthMultiplier).dp
+                    val midOffsetY = (effectivePitch * 8 * depthMultiplier).dp
+
+                    // Foreground Layer (Moves faster towards user)
+                    val fgOffsetX = (currentRoll * 28 * depthMultiplier).dp
+                    val fgOffsetY = (effectivePitch * 28 * depthMultiplier).dp
+
+                    // Simulated or actual source image
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                scaleX = 1.15f
+                                scaleY = 1.15f
+                            }
+                    ) {
+                        // Background layer frame
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset { IntOffset(bgOffsetX.toPx().roundToInt(), bgOffsetY.toPx().roundToInt()) }
+                        ) {
+                            if (sourceBitmap != null) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    drawImage(
+                                        image = sourceBitmap.asImageBitmap(),
+                                        dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt()),
+                                        colorFilter = ColorFilter.colorMatrix(
+                                            ColorMatrix().apply { setToScale(0.88f, 0.88f, 0.92f, 1f) }
+                                        )
                                     )
-                                )
+                                }
+                            } else {
+                                // High-tech fallback canvas backdrop
+                                PlaceholderDepthArt(photo = photo, layer = "BG", tiltX = currentRoll, tiltY = effectivePitch)
                             }
-                        } else {
-                            // High-tech fallback canvas backdrop
-                            PlaceholderDepthArt(photo = photo, layer = "BG", tiltX = currentRoll, tiltY = effectivePitch)
                         }
-                    }
 
-                    // Midground layer frame
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .offset { IntOffset(midOffsetX.toPx().roundToInt(), midOffsetY.toPx().roundToInt()) }
-                    ) {
-                        if (sourceBitmap != null && foregroundBitmap == null) {
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                drawImage(
-                                    image = sourceBitmap.asImageBitmap(),
-                                    dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt())
-                                )
+                        // Midground layer frame
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset { IntOffset(midOffsetX.toPx().roundToInt(), midOffsetY.toPx().roundToInt()) }
+                        ) {
+                            if (sourceBitmap != null && foregroundBitmap == null) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    drawImage(
+                                        image = sourceBitmap.asImageBitmap(),
+                                        dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt())
+                                    )
+                                }
+                            } else if (sourceBitmap == null) {
+                                PlaceholderDepthArt(photo = photo, layer = "MID", tiltX = currentRoll, tiltY = effectivePitch)
                             }
-                        } else if (sourceBitmap == null) {
-                            PlaceholderDepthArt(photo = photo, layer = "MID", tiltX = currentRoll, tiltY = effectivePitch)
                         }
-                    }
 
-                    // Foreground Cutout Layer
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .offset { IntOffset(fgOffsetX.toPx().roundToInt(), fgOffsetY.toPx().roundToInt()) }
-                    ) {
-                        if (foregroundBitmap != null) {
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                drawImage(
-                                    image = foregroundBitmap.asImageBitmap(),
-                                    dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt())
-                                )
+                        // Foreground Cutout Layer
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset { IntOffset(fgOffsetX.toPx().roundToInt(), fgOffsetY.toPx().roundToInt()) }
+                        ) {
+                            if (foregroundBitmap != null) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    drawImage(
+                                        image = foregroundBitmap.asImageBitmap(),
+                                        dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt())
+                                    )
+                                }
+                            } else if (sourceBitmap == null) {
+                                PlaceholderDepthArt(photo = photo, layer = "FG", tiltX = currentRoll, tiltY = effectivePitch)
                             }
-                        } else if (sourceBitmap == null) {
-                            PlaceholderDepthArt(photo = photo, layer = "FG", tiltX = currentRoll, tiltY = effectivePitch)
                         }
                     }
                 }

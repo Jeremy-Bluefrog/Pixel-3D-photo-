@@ -117,6 +117,56 @@ object DepthMapGenerator {
     }
 
     /**
+     * Applies real-time 3D Gyroscope Depth-Displacement Effect on a photo using the AI-generated depth map.
+     * Reads the grayscale depth bitmap (depthBitmap) calculated by DepthMapGenerator / DepthAnythingEstimator,
+     * and shifts each pixel proportionally based on gyroscope roll & pitch angles.
+     */
+    suspend fun applyGyroDepthParallax(
+        sourceBitmap: Bitmap,
+        depthBitmap: Bitmap,
+        roll: Float,
+        pitch: Float,
+        depthIntensity: Float = 1.0f,
+        maxDisplacementPx: Float = 24f
+    ): Bitmap = withContext(Dispatchers.Default) {
+        val width = sourceBitmap.width
+        val height = sourceBitmap.height
+
+        val scaledDepth = if (depthBitmap.width != width || depthBitmap.height != height) {
+            Bitmap.createScaledBitmap(depthBitmap, width, height, true)
+        } else depthBitmap
+
+        val srcPixels = IntArray(width * height)
+        val depthPixels = IntArray(width * height)
+        val outputPixels = IntArray(width * height)
+
+        sourceBitmap.getPixels(srcPixels, 0, width, 0, 0, width, height)
+        scaledDepth.getPixels(depthPixels, 0, width, 0, 0, width, height)
+
+        val shiftX = roll * maxDisplacementPx * depthIntensity
+        val shiftY = pitch * maxDisplacementPx * depthIntensity
+
+        for (y in 0 until height) {
+            val yOffset = y * width
+            for (x in 0 until width) {
+                val index = yOffset + x
+                // Normalize depth value to centered range [-0.5, 0.5]
+                val rawDepth = Color.red(depthPixels[index]) / 255f
+                val depthVal = rawDepth - 0.5f
+
+                val sampleX = (x - (shiftX * depthVal)).toInt().coerceIn(0, width - 1)
+                val sampleY = (y - (shiftY * depthVal)).toInt().coerceIn(0, height - 1)
+
+                outputPixels[index] = srcPixels[sampleY * width + sampleX]
+            }
+        }
+
+        val resultBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        resultBitmap.setPixels(outputPixels, 0, width, 0, 0, width, height)
+        resultBitmap
+    }
+
+    /**
      * Extracts a subject foreground layer with smooth anti-aliased transparency based on depth threshold.
      */
     suspend fun extractForegroundLayer(
