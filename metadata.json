@@ -1,0 +1,6 @@
+{
+  "name": "Pixel 3D AI",
+  "description": "3D Spatial photo creator with AI depth map extraction, parallax tilt hologram, and dual-camera stereo capture.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
