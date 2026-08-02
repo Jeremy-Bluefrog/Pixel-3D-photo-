@@ -191,9 +191,9 @@ fun HomeScreen(
                                 ) {
                                     Box(
                                         contentAlignment = Alignment.Center,
-                                        modifier = Modifier.size(110.dp)
+                                        modifier = Modifier.size(200.dp)
                                     ) {
-                                        VideoOrMorphingLoader(size = 110.dp)
+                                        VideoOrMorphingLoader(size = 200.dp)
                                     }
 
                                     Spacer(modifier = Modifier.height(24.dp))

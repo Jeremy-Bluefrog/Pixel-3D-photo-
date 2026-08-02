@@ -102,15 +102,15 @@ fun MotionSensorParallaxPhoto(
         label = "animatedPitch"
     )
 
-    // Parallax translation factors in dp
-    val bgTranslationX = (-animatedRoll * 18f * depthIntensity).dp
-    val bgTranslationY = (-animatedPitch * 18f * depthIntensity).dp
+    // Parallax translation factors in dp (Subtle reduced movement range)
+    val bgTranslationX = (-animatedRoll * 7f * depthIntensity).dp
+    val bgTranslationY = (-animatedPitch * 7f * depthIntensity).dp
 
-    val midTranslationX = (animatedRoll * 8f * depthIntensity).dp
-    val midTranslationY = (animatedPitch * 8f * depthIntensity).dp
+    val midTranslationX = (animatedRoll * 3f * depthIntensity).dp
+    val midTranslationY = (animatedPitch * 3f * depthIntensity).dp
 
-    val fgTranslationX = (animatedRoll * 28f * depthIntensity).dp
-    val fgTranslationY = (animatedPitch * 28f * depthIntensity).dp
+    val fgTranslationX = (animatedRoll * 12f * depthIntensity).dp
+    val fgTranslationY = (animatedPitch * 12f * depthIntensity).dp
 
     val aspectRatio = if (photoBitmap != null && photoBitmap.height > 0) {
         photoBitmap.width.toFloat() / photoBitmap.height.toFloat()
@@ -140,9 +140,9 @@ fun MotionSensorParallaxPhoto(
                 )
             }
             .graphicsLayer {
-                // Subtle 3D perspective rotation for hologram feel
-                rotationY = animatedRoll * 10f * depthIntensity
-                rotationX = -animatedPitch * 10f * depthIntensity
+                // Subtle 3D perspective rotation for hologram feel (Reduced rotation range)
+                rotationY = animatedRoll * 4.5f * depthIntensity
+                rotationX = -animatedPitch * 4.5f * depthIntensity
                 cameraDistance = 16f * density
             }
             .clip(RoundedCornerShape(24.dp))

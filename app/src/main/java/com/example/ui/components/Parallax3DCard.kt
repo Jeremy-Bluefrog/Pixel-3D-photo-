@@ -137,8 +137,8 @@ fun Parallax3DCard(
             }
             .graphicsLayer {
                 // True 3D perspective spatial tilt on card container
-                rotationY = animatedRoll * 12f * depthMultiplier
-                rotationX = -animatedPitch * 12f * depthMultiplier
+                rotationY = animatedRoll * 5f * depthMultiplier
+                rotationX = -animatedPitch * 5f * depthMultiplier
                 cameraDistance = 16f * density
             }
             .clip(RoundedCornerShape(28.dp))
@@ -148,16 +148,16 @@ fun Parallax3DCard(
         when (renderMode) {
             Render3DMode.PARALLAX_TILT, Render3DMode.WIGGLE_STEREOGRAM -> {
                 // Background Layer (Moves opposite & deeper into Z-space)
-                val bgOffsetX = (-animatedRoll * 16 * depthMultiplier).dp
-                val bgOffsetY = (-animatedPitch * 16 * depthMultiplier).dp
+                val bgOffsetX = (-animatedRoll * 7 * depthMultiplier).dp
+                val bgOffsetY = (-animatedPitch * 7 * depthMultiplier).dp
 
                 // Midground Layer (Slight movement)
-                val midOffsetX = (animatedRoll * 6 * depthMultiplier).dp
-                val midOffsetY = (animatedPitch * 6 * depthMultiplier).dp
+                val midOffsetX = (animatedRoll * 3 * depthMultiplier).dp
+                val midOffsetY = (animatedPitch * 3 * depthMultiplier).dp
 
                 // Foreground Layer (Projects forward towards viewer)
-                val fgOffsetX = (animatedRoll * 34 * depthMultiplier).dp
-                val fgOffsetY = (animatedPitch * 34 * depthMultiplier).dp
+                val fgOffsetX = (animatedRoll * 14 * depthMultiplier).dp
+                val fgOffsetY = (animatedPitch * 14 * depthMultiplier).dp
 
                 // Soft dynamic drop shadow offset for floating foreground cutout
                 val shadowOffsetX = (animatedRoll * 18 * depthMultiplier + 6).dp

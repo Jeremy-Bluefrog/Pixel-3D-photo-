@@ -196,7 +196,7 @@ class OverlayService : Service() {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        VideoOrMorphingLoader(size = 110.dp)
+                        VideoOrMorphingLoader(size = 200.dp)
                         Spacer(modifier = Modifier.height(24.dp))
                         Text(
                             text = currentLoadingText,

@@ -1,17 +1,23 @@
 package com.example.ui.components
 
+import android.graphics.SurfaceTexture
+import android.media.MediaPlayer
 import android.net.Uri
-import android.widget.VideoView
+import android.view.Surface
+import android.view.TextureView
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -22,7 +28,7 @@ const val DEFAULT_LOADER_VIDEO_URL = "https://github.com/Jeremy-Bluefrog/Pixel-3
 @Composable
 fun VideoOrMorphingLoader(
     modifier: Modifier = Modifier,
-    size: Dp = 110.dp,
+    size: Dp = 200.dp,
     customVideoUrl: String? = DEFAULT_LOADER_VIDEO_URL
 ) {
     val context = LocalContext.current
@@ -41,18 +47,74 @@ fun VideoOrMorphingLoader(
     }
 
     if (videoUri != null && !hasError) {
-        Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
+        var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+
+        DisposableEffect(videoUri) {
+            onDispose {
+                try {
+                    mediaPlayer?.stop()
+                    mediaPlayer?.release()
+                } catch (_: Exception) {}
+                mediaPlayer = null
+            }
+        }
+
+        Box(
+            modifier = modifier
+                .size(size)
+                .clip(CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
             AndroidView(
                 factory = { ctx ->
-                    VideoView(ctx).apply {
-                        setVideoURI(videoUri)
-                        setOnPreparedListener { mp ->
-                            mp.isLooping = true
-                            start()
-                        }
-                        setOnErrorListener { _, _, _ ->
-                            hasError = true
-                            true
+                    TextureView(ctx).apply {
+                        surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                            override fun onSurfaceTextureAvailable(
+                                surfaceTexture: SurfaceTexture,
+                                width: Int,
+                                height: Int
+                            ) {
+                                try {
+                                    val surface = Surface(surfaceTexture)
+                                    val mp = MediaPlayer().apply {
+                                        setSurface(surface)
+                                        setDataSource(ctx, videoUri)
+                                        isLooping = true
+                                        setOnPreparedListener {
+                                            try {
+                                                it.start()
+                                            } catch (_: Exception) {
+                                                hasError = true
+                                            }
+                                        }
+                                        setOnErrorListener { _, _, _ ->
+                                            hasError = true
+                                            true
+                                        }
+                                        prepareAsync()
+                                    }
+                                    mediaPlayer = mp
+                                } catch (_: Exception) {
+                                    hasError = true
+                                }
+                            }
+
+                            override fun onSurfaceTextureSizeChanged(
+                                surface: SurfaceTexture,
+                                width: Int,
+                                height: Int
+                            ) {}
+
+                            override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+                                try {
+                                    mediaPlayer?.stop()
+                                    mediaPlayer?.release()
+                                } catch (_: Exception) {}
+                                mediaPlayer = null
+                                return true
+                            }
+
+                            override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
                         }
                     }
                 },
@@ -64,4 +126,5 @@ fun VideoOrMorphingLoader(
         ExpressiveMorphingLoader(modifier = modifier, size = size)
     }
 }
+
 
