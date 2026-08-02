@@ -46,12 +46,15 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.Render3DMode
 import com.example.data.model.SpatialPhoto
 import com.example.sensor.TiltData
-import com.example.ui.theme.CyberMagenta
-import com.example.ui.theme.GlassBorder
-import com.example.ui.theme.GlassSurface
-import com.example.ui.theme.NeonCyan
-import com.example.ui.theme.PixelDarkSurface
+import androidx.compose.material3.MaterialTheme
 import kotlin.math.roundToInt
+
+data class PointCloudParticle(
+    val x: Float,
+    val y: Float,
+    val depth: Float,
+    val color: Color
+)
 
 @Composable
 fun Parallax3DCard(
@@ -138,9 +141,9 @@ fun Parallax3DCard(
                 rotationX = -animatedPitch * 12f * depthMultiplier
                 cameraDistance = 16f * density
             }
-            .clip(RoundedCornerShape(24.dp))
-            .background(PixelDarkSurface)
-            .border(1.5.dp, GlassBorder, RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(28.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(28.dp))
     ) {
         when (renderMode) {
             Render3DMode.PARALLAX_TILT, Render3DMode.WIGGLE_STEREOGRAM -> {
@@ -359,14 +362,14 @@ fun Parallax3DCard(
                         val gridStep = 40.dp.toPx()
                         for (x in 0..(size.width / gridStep).toInt()) {
                             drawLine(
-                                color = GlassBorder,
+                                color = Color.White.copy(alpha = 0.2f),
                                 start = Offset(x * gridStep, 0f),
                                 end = Offset(x * gridStep, size.height)
                             )
                         }
                         for (y in 0..(size.height / gridStep).toInt()) {
                             drawLine(
-                                color = GlassBorder,
+                                color = Color.White.copy(alpha = 0.2f),
                                 start = Offset(0f, y * gridStep),
                                 end = Offset(size.width, y * gridStep)
                             )
@@ -386,6 +389,72 @@ fun Parallax3DCard(
                         } else {
                             PlaceholderDepthArt(photo = photo, layer = "FG_CUTOUT", tiltX = animatedRoll, tiltY = animatedPitch)
                         }
+                    }
+                }
+            }
+
+            Render3DMode.POINT_CLOUD_SPLAT -> {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (sourceBitmap != null && customDepthBitmap != null) {
+                        val pointCloud = remember(sourceBitmap, customDepthBitmap) {
+                            val points = mutableListOf<PointCloudParticle>()
+                            val stepX = (sourceBitmap.width / 60).coerceAtLeast(1)
+                            val stepY = (sourceBitmap.height / 60).coerceAtLeast(1)
+                            val width = sourceBitmap.width
+                            val height = sourceBitmap.height
+                            
+                            val srcPixels = IntArray(width * height)
+                            val depthPixels = IntArray(width * height)
+                            sourceBitmap.getPixels(srcPixels, 0, width, 0, 0, width, height)
+                            
+                            val scaledDepth = if (customDepthBitmap.width != width || customDepthBitmap.height != height) {
+                                Bitmap.createScaledBitmap(customDepthBitmap, width, height, true)
+                            } else customDepthBitmap
+                            scaledDepth.getPixels(depthPixels, 0, width, 0, 0, width, height)
+                            
+                            for (y in 0 until height step stepY) {
+                                for (x in 0 until width step stepX) {
+                                    val index = y * width + x
+                                    val color = srcPixels[index]
+                                    val depth = android.graphics.Color.red(depthPixels[index]) / 255f
+                                    points.add(
+                                        PointCloudParticle(
+                                            x = x.toFloat() / width,
+                                            y = y.toFloat() / height,
+                                            depth = depth,
+                                            color = Color(color).copy(alpha = 0.95f)
+                                        )
+                                    )
+                                }
+                            }
+                            // Sort by depth so closer points are drawn last (Painters algorithm)
+                            points.sortedBy { it.depth }
+                        }
+
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            drawRect(Color(0xFF05080F)) // deep space background
+                            val w = size.width
+                            val h = size.height
+                            
+                            val tiltX = animatedRoll * 120f * depthMultiplier
+                            val tiltY = animatedPitch * 120f * depthMultiplier
+
+                            for (particle in pointCloud) {
+                                val zShift = (particle.depth - 0.5f)
+                                val projX = (particle.x * w) + (tiltX * zShift)
+                                val projY = (particle.y * h) + (tiltY * zShift)
+                                
+                                val splatSize = (size.width / 45f) * (0.5f + particle.depth * 0.5f)
+                                
+                                drawCircle(
+                                    color = particle.color,
+                                    radius = splatSize,
+                                    center = Offset(projX, projY)
+                                )
+                            }
+                        }
+                    } else {
+                        PlaceholderDepthArt(photo = photo, layer = "DEPTH_MAP", tiltX = animatedRoll, tiltY = animatedPitch)
                     }
                 }
             }
@@ -442,7 +511,7 @@ fun PlaceholderDepthArt(
 
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(NeonCyan.copy(alpha = 0.85f), CyberMagenta.copy(alpha = 0.7f)),
+                        colors = listOf(Color(0xFF3B82F6).copy(alpha = 0.85f), Color(0xFF10B981).copy(alpha = 0.7f)),
                         center = Offset(subjectX, subjectY),
                         radius = radius
                     ),

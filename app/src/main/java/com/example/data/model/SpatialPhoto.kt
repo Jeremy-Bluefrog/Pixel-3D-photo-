@@ -27,7 +27,8 @@ enum class Render3DMode {
     WIGGLE_STEREOGRAM,
     ANAGLYPH_3D,
     DEPTH_MAP_HEATMAP,
-    LAYER_CUTOUT
+    LAYER_CUTOUT,
+    POINT_CLOUD_SPLAT
 }
 
 enum class DepthHeatmapPalette {

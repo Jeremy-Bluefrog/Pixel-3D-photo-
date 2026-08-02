@@ -3,21 +3,16 @@ package com.example.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,14 +33,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ScreenRotation
-import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -53,32 +45,22 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.example.data.model.Render3DMode
+import com.example.ui.components.VideoOrMorphingLoader
 import com.example.ui.components.Parallax3DCard
-import com.example.ui.theme.GlassBorder
-import com.example.ui.theme.GlassSurface
-import com.example.ui.theme.NeonCyan
-import com.example.ui.theme.PixelDarkBackground
-import com.example.ui.theme.PixelDarkSurface
-import com.example.ui.theme.TextMuted
-import com.example.ui.theme.TextPrimary
-import com.example.ui.theme.TextSecondary
 import com.example.ui.viewmodel.SpatialViewModel
 
 @Composable
 fun HomeScreen(
-    viewModel: SpatialViewModel
+    viewModel: SpatialViewModel,
+    onStartOverlay: () -> Unit
 ) {
     val context = LocalContext.current
     val selectedPhoto by viewModel.selectedPhoto.collectAsState()
@@ -90,6 +72,15 @@ fun HomeScreen(
     val foregroundBitmap by viewModel.currentForegroundBitmap.collectAsState()
     val backgroundBitmap by viewModel.currentBackgroundBitmap.collectAsState()
 
+    val processingProgress by viewModel.processingProgress.collectAsState()
+    val processingStageMessage by viewModel.processingStageMessage.collectAsState()
+
+    val animatedProgress by animateFloatAsState(
+        targetValue = processingProgress,
+        animationSpec = tween(400, easing = FastOutSlowInEasing),
+        label = "progressAnimation"
+    )
+
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -98,7 +89,6 @@ fun HomeScreen(
         }
     }
 
-    // Pulse animation for empty state & loading
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 0.98f,
@@ -111,24 +101,14 @@ fun HomeScreen(
     )
 
     Scaffold(
-        containerColor = PixelDarkBackground,
+        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFF0F172A),
-                            PixelDarkBackground,
-                            Color(0xFF070A12)
-                        )
-                    )
-                )
         ) {
-            // Main Content Area
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -136,75 +116,56 @@ fun HomeScreen(
                         top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
                         bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                     )
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Top Header Bar (iOS Photos minimal style)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                // Top App Bar
+                Surface(
+                    shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Title badge + Import button
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = GlassSurface,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .clickable { photoPickerLauncher.launch("image/*") }
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AddPhotoAlternate,
-                                    contentDescription = "新增照片",
-                                    tint = NeonCyan,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = if (selectedPhoto == null) "選擇照片" else "更換照片",
-                                    color = TextPrimary,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                    }
-
-                    // Close Button (visible when photo is loaded)
-                    AnimatedVisibility(
-                        visible = selectedPhoto != null,
-                        enter = fadeIn() + scaleIn(),
-                        exit = fadeOut() + scaleOut()
-                    ) {
-                        IconButton(
-                            onClick = { viewModel.clearSelectedPhoto() },
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(GlassSurface)
-                                .border(1.dp, GlassBorder, CircleShape)
+                        // Title
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "關閉",
-                                tint = TextPrimary,
-                                modifier = Modifier.size(20.dp)
+                                imageVector = Icons.Default.ScreenRotation,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "陀螺儀 3D 相片",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Actions
+                        IconButton(
+                            onClick = { photoPickerLauncher.launch("image/*") },
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AddPhotoAlternate,
+                                contentDescription = "選取照片",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         }
                     }
                 }
 
-                // Center Display Area
+                // Main Center Display Viewport - Gyroscope 3D Parallax Photo
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -214,152 +175,178 @@ fun HomeScreen(
                 ) {
                     when {
                         isProcessingAi -> {
-                            // Loading state
+                            // Processing State
                             Surface(
-                                shape = RoundedCornerShape(28.dp),
-                                color = PixelDarkSurface,
-                                border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder),
+                                shape = RoundedCornerShape(32.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(16.dp)
-                                    .scale(pulseScale)
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(40.dp),
+                                    modifier = Modifier.padding(24.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center
                                 ) {
-                                    CircularProgressIndicator(
-                                        color = NeonCyan,
-                                        strokeWidth = 3.dp,
-                                        modifier = Modifier.size(48.dp)
-                                    )
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.size(110.dp)
+                                    ) {
+                                        VideoOrMorphingLoader(size = 110.dp)
+                                    }
+
                                     Spacer(modifier = Modifier.height(24.dp))
+
                                     Text(
-                                        text = "裝置端 AI 景深模型推論中...",
-                                        color = TextPrimary,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold
+                                        text = "3D 景深重建中",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
+
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = "裝置端 NPU 神經網路估算立體視差中",
-                                        color = TextMuted,
-                                        fontSize = 13.sp
-                                    )
+
+                                    Surface(
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = MaterialTheme.colorScheme.secondaryContainer
+                                    ) {
+                                        Text(
+                                            text = processingStageMessage,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(24.dp))
+
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "進度 ${(animatedProgress * 100).toInt()}%",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = "本機運算",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        LinearProgressIndicator(
+                                            progress = { animatedProgress },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(8.dp)
+                                                .clip(RoundedCornerShape(4.dp))
+                                        )
+                                    }
                                 }
                             }
                         }
 
                         selectedPhoto != null -> {
-                            // 3D Parallax Active Photo View
                             selectedPhoto?.let { photo ->
                                 Box(
-                                    contentAlignment = Alignment.BottomEnd,
-                                    modifier = Modifier.fillMaxWidth()
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.fillMaxSize()
                                 ) {
                                     Parallax3DCard(
                                         photo = photo,
                                         tiltData = tiltData,
+                                        renderMode = Render3DMode.PARALLAX_TILT,
                                         customDepthBitmap = depthBitmap,
                                         foregroundBitmap = foregroundBitmap,
                                         backgroundBitmap = backgroundBitmap,
                                         sourceBitmap = sourceBitmap,
-                                        modifier = Modifier.fillMaxWidth()
+                                        modifier = Modifier.fillMaxSize()
                                     )
                                 }
                             }
                         }
 
                         else -> {
-                            // Empty State - iOS Style Photo Import Box
-                            Box(
+                            // Empty State
+                            Surface(
+                                shape = RoundedCornerShape(32.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(32.dp))
-                                    .background(PixelDarkSurface)
-                                    .border(
-                                        width = 1.5.dp,
-                                        brush = Brush.radialGradient(
-                                            colors = listOf(NeonCyan.copy(alpha = 0.6f), GlassBorder)
-                                        ),
-                                        shape = RoundedCornerShape(32.dp)
-                                    )
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null
-                                    ) { photoPickerLauncher.launch("image/*") }
-                                    .padding(32.dp),
-                                contentAlignment = Alignment.Center
+                                    .clickable { photoPickerLauncher.launch("image/*") }
                             ) {
                                 Column(
+                                    modifier = Modifier.padding(32.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(72.dp)
+                                            .size(80.dp)
                                             .scale(pulseScale)
                                             .clip(CircleShape)
-                                            .background(
-                                                Brush.linearGradient(
-                                                    colors = listOf(Color(0xFF1E293B), Color(0xFF0F172A))
-                                                )
-                                            )
-                                            .border(1.5.dp, NeonCyan.copy(alpha = 0.8f), CircleShape),
+                                            .background(MaterialTheme.colorScheme.primaryContainer)
+                                            .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.ViewInAr,
+                                            imageVector = Icons.Default.ScreenRotation,
                                             contentDescription = null,
-                                            tint = NeonCyan,
-                                            modifier = Modifier.size(36.dp)
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.size(40.dp)
                                         )
                                     }
 
                                     Spacer(modifier = Modifier.height(24.dp))
 
                                     Text(
-                                        text = "新增照片開啓 3D 空間視差",
-                                        color = TextPrimary,
-                                        fontSize = 20.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        text = "選取照片開啟 3D 視差",
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         textAlign = TextAlign.Center
                                     )
 
                                     Spacer(modifier = Modifier.height(8.dp))
 
                                     Text(
-                                        text = "裝置端 AI 景深神經網路 · 100% 本機運算無限使用",
-                                        color = TextSecondary,
-                                        fontSize = 13.sp,
-                                        textAlign = TextAlign.Center,
-                                        lineHeight = 18.sp,
-                                        modifier = Modifier.padding(horizontal = 8.dp)
+                                        text = "傾斜手機即可即時體驗 3D 立體空間效果",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center
                                     )
 
-                                    Spacer(modifier = Modifier.height(28.dp))
+                                    Spacer(modifier = Modifier.height(32.dp))
 
                                     Button(
                                         onClick = { photoPickerLauncher.launch("image/*") },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = NeonCyan,
-                                            contentColor = Color.Black
-                                        ),
-                                        shape = RoundedCornerShape(24.dp),
-                                        modifier = Modifier.height(48.dp)
+                                        modifier = Modifier.fillMaxWidth(0.8f).height(56.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.AddPhotoAlternate,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp)
+                                            contentDescription = null
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = "從相簿選取照片",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp
+                                        Text(text = "選取照片")
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    Button(
+                                        onClick = { onStartOverlay() },
+                                        modifier = Modifier.fillMaxWidth(0.8f).height(56.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null
                                         )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(text = "開啟圖庫截圖按鈕")
                                     }
                                 }
                             }
@@ -367,8 +354,41 @@ fun HomeScreen(
                     }
                 }
 
-                // Bottom subtle hint or spacer
-                Spacer(modifier = Modifier.height(8.dp))
+                // Bottom Info Bar
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.tertiary)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "陀螺儀感應中",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Text(
+                            text = String.format("X:%.1f°  Y:%.1f°", tiltData.roll, tiltData.pitch),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
         }
     }

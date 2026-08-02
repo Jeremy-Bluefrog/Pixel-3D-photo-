@@ -63,6 +63,15 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
     private val _isProcessingAi = MutableStateFlow(false)
     val isProcessingAi: StateFlow<Boolean> = _isProcessingAi.asStateFlow()
 
+    private val _processingProgress = MutableStateFlow(0f)
+    val processingProgress: StateFlow<Float> = _processingProgress.asStateFlow()
+
+    private val _processingStageMessage = MutableStateFlow("初始化 3D LDI 空間引擎...")
+    val processingStageMessage: StateFlow<String> = _processingStageMessage.asStateFlow()
+
+    private val _processingStageIndex = MutableStateFlow(1)
+    val processingStageIndex: StateFlow<Int> = _processingStageIndex.asStateFlow()
+
     private val _aiAnalysisResult = MutableStateFlow<SpatialAiAnalysisResult?>(null)
     val aiAnalysisResult: StateFlow<SpatialAiAnalysisResult?> = _aiAnalysisResult.asStateFlow()
 
@@ -154,8 +163,14 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
         val bitmap = currentSourceBitmap.value ?: return
         viewModelScope.launch {
             _isProcessingAi.value = true
+            _processingProgress.value = 0.10f
+            _processingStageIndex.value = 1
+            _processingStageMessage.value = "1/4：準備照片與 LiteRT 神經網路張量"
             try {
                 // On-device local AI spatial depth re-calculation
+                _processingProgress.value = 0.30f
+                _processingStageIndex.value = 2
+                _processingStageMessage.value = "2/4：Pixel 10 Pro 裝置端 (Depth-Anything v2) 景深模型推論..."
                 val depthEstimator = DepthAnythingEstimator(context = getApplication())
                 val depthResult = depthEstimator.estimateDepth(
                     inputBitmap = bitmap,
@@ -164,6 +179,9 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
                 )
                 currentDepthBitmap.value = depthResult.depthBitmap
 
+                _processingProgress.value = 0.60f
+                _processingStageIndex.value = 3
+                _processingStageMessage.value = "3/4：提取 LDI 前景焦點主體與羽化透明遮罩..."
                 val fgLayer = DepthMapGenerator.extractForegroundLayer(
                     sourceBitmap = bitmap,
                     depthBitmap = depthResult.depthBitmap,
@@ -171,13 +189,18 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
                 )
                 currentForegroundBitmap.value = fgLayer
 
-                // NEW: Extract Background Layer with Inpainting
+                _processingProgress.value = 0.85f
+                _processingStageIndex.value = 4
+                _processingStageMessage.value = "4/4：執行 LDI 背景像素修補 (Inpainting) 補齊被遮擋區域..."
                 val bgLayer = DepthMapGenerator.extractBackgroundLayerWithInpainting(
                     sourceBitmap = bitmap,
                     depthBitmap = depthResult.depthBitmap,
                     threshold = _focalPlane.value
                 )
                 currentBackgroundBitmap.value = bgLayer
+
+                _processingProgress.value = 1.0f
+                _processingStageMessage.value = "完成！已成功建構 LDI 3D 視差與背景修補照片"
 
                 val localAiAnalysis = "【100% 裝置端 LiteRT 神經網路】\n已完成 LDI (Layered Depth Image) 分層，背景像素成功修補 (Inpainting)，實現完美無黑邊視差效果。"
                 val aiResult = SpatialAiAnalysisResult(
@@ -204,9 +227,15 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
     fun processBitmapTo3DSpatial(bitmap: Bitmap, title: String = "AI 2D 轉 3D 空間照片") {
         viewModelScope.launch {
             _isProcessingAi.value = true
+            _processingProgress.value = 0.10f
+            _processingStageIndex.value = 1
+            _processingStageMessage.value = "1/4：載入照片並初始化 3D LDI 神經引擎"
             currentSourceBitmap.value = bitmap
 
             // 1. 初始化 LiteRT 裝置端 Depth Anything 引擎進行 3D 深度圖推論
+            _processingProgress.value = 0.30f
+            _processingStageIndex.value = 2
+            _processingStageMessage.value = "2/4：Pixel 10 Pro (Depth-Anything v2) 裝置端景深推論..."
             val depthEstimator = DepthAnythingEstimator(context = getApplication())
             val depthResult = depthEstimator.estimateDepth(
                 inputBitmap = bitmap,
@@ -217,6 +246,9 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
             currentDepthBitmap.value = depthMap
 
             // 2. Extract Foreground Layer via On-Device Segmentation
+            _processingProgress.value = 0.60f
+            _processingStageIndex.value = 3
+            _processingStageMessage.value = "3/4：提取前景焦點主體與羽化圖層..."
             val fgLayer = DepthMapGenerator.extractForegroundLayer(
                 sourceBitmap = bitmap,
                 depthBitmap = depthMap,
@@ -224,7 +256,10 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
             )
             currentForegroundBitmap.value = fgLayer
 
-            // NEW: Extract Background Layer with Inpainting
+            // 3. Extract Background Layer with Inpainting
+            _processingProgress.value = 0.85f
+            _processingStageIndex.value = 4
+            _processingStageMessage.value = "4/4：執行 LDI 背景像素修補 (Inpainting) 演算，消除破洞..."
             val bgLayer = DepthMapGenerator.extractBackgroundLayerWithInpainting(
                 sourceBitmap = bitmap,
                 depthBitmap = depthMap,
@@ -232,7 +267,10 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
             )
             currentBackgroundBitmap.value = bgLayer
 
-            // 3. 100% On-Device Local AI Spatial Analysis
+            _processingProgress.value = 1.0f
+            _processingStageMessage.value = "完成！高質感 3D 空間照片建構完成"
+
+            // 4. 100% On-Device Local AI Spatial Analysis
             val localAiAnalysis = "【100% 裝置端 LiteRT 神經網路】\n已完成本機 LDI (Layered Depth Image) 智慧分層，並執行背景像素修補 (Inpainting) 演算，實現無破洞視差。"
             val aiResult = SpatialAiAnalysisResult(
                 rawText = localAiAnalysis,
@@ -249,7 +287,7 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
             _depthIntensity.value = aiResult.depthIntensity
             _focalPlane.value = aiResult.focalPlane
 
-            // 4. Create SpatialPhoto model & Save
+            // 5. Create SpatialPhoto model & Save
             val newPhoto = SpatialPhoto(
                 title = title,
                 sourceUri = "user_converted_${System.currentTimeMillis()}",
@@ -273,9 +311,15 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
     fun processPixel9DualCameraCapture(leftBitmap: Bitmap, rightBitmap: Bitmap, title: String = "Pixel 9 Pro 雙鏡頭空間照片") {
         viewModelScope.launch {
             _isProcessingAi.value = true
+            _processingProgress.value = 0.15f
+            _processingStageIndex.value = 1
+            _processingStageMessage.value = "1/3：準備雙鏡頭主廣角影像張量"
             currentSourceBitmap.value = leftBitmap
 
             // Dual lens stereo calculation
+            _processingProgress.value = 0.50f
+            _processingStageIndex.value = 2
+            _processingStageMessage.value = "2/3：計算雙鏡頭立體光學視差基線..."
             val depthMap = DepthMapGenerator.generateDepthMap(
                 sourceBitmap = leftBitmap,
                 focalPlane = 0.40f,
@@ -284,6 +328,9 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
             )
             currentDepthBitmap.value = depthMap
 
+            _processingProgress.value = 0.85f
+            _processingStageIndex.value = 3
+            _processingStageMessage.value = "3/3：分離 Foreground 主體與雙視角補齊..."
             val fgLayer = DepthMapGenerator.extractForegroundLayer(
                 sourceBitmap = leftBitmap,
                 depthBitmap = depthMap,
