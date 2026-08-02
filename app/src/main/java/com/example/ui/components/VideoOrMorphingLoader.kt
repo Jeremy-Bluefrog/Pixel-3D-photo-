@@ -3,12 +3,14 @@ package com.example.ui.components
 import android.graphics.SurfaceTexture
 import android.media.MediaPlayer
 import android.net.Uri
+import android.util.Log
 import android.view.Surface
 import android.view.TextureView
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -38,33 +40,25 @@ fun VideoOrMorphingLoader(
         context.resources.getIdentifier("loading_video", "raw", context.packageName)
     }
 
-    val videoUri = remember(customVideoUrl, rawResId) {
-        when {
-            rawResId != 0 -> Uri.parse("android.resource://${context.packageName}/$rawResId")
-            !customVideoUrl.isNullOrBlank() -> Uri.parse(customVideoUrl)
-            else -> null
-        }
-    }
-
-    if (videoUri != null && !hasError) {
-        var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
-
-        DisposableEffect(videoUri) {
-            onDispose {
-                try {
-                    mediaPlayer?.stop()
-                    mediaPlayer?.release()
-                } catch (_: Exception) {}
-                mediaPlayer = null
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (!hasError) {
+            var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+            
+            DisposableEffect(rawResId, customVideoUrl) {
+                onDispose {
+                    try {
+                        mediaPlayer?.stop()
+                        mediaPlayer?.release()
+                    } catch (_: Exception) {}
+                    mediaPlayer = null
+                }
             }
-        }
 
-        Box(
-            modifier = modifier
-                .size(size)
-                .clip(CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
             AndroidView(
                 factory = { ctx ->
                     TextureView(ctx).apply {
@@ -78,33 +72,64 @@ fun VideoOrMorphingLoader(
                                     val surface = Surface(surfaceTexture)
                                     val mp = MediaPlayer().apply {
                                         setSurface(surface)
-                                        setDataSource(ctx, videoUri)
+                                        
+                                        // Prioritize customVideoUrl if specified and valid, otherwise use raw resource
+                                        if (!customVideoUrl.isNullOrBlank()) {
+                                            try {
+                                                setDataSource(ctx, Uri.parse(customVideoUrl))
+                                            } catch (e: Exception) {
+                                                Log.e("Loader", "Failed to set custom video URL, trying raw res: ${e.message}")
+                                                if (rawResId != 0) {
+                                                    val afd = ctx.resources.openRawResourceFd(rawResId)
+                                                    if (afd != null) {
+                                                        setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                                                        afd.close()
+                                                    } else {
+                                                        hasError = true
+                                                    }
+                                                } else {
+                                                    hasError = true
+                                                }
+                                            }
+                                        } else if (rawResId != 0) {
+                                            val afd = ctx.resources.openRawResourceFd(rawResId)
+                                            if (afd != null) {
+                                                setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                                                afd.close()
+                                            } else {
+                                                hasError = true
+                                            }
+                                        } else {
+                                            hasError = true
+                                        }
+                                        
                                         isLooping = true
                                         setOnPreparedListener {
                                             try {
                                                 it.start()
-                                            } catch (_: Exception) {
+                                            } catch (e: Exception) {
+                                                Log.e("Loader", "Error starting player: ${e.message}")
                                                 hasError = true
                                             }
                                         }
-                                        setOnErrorListener { _, _, _ ->
+                                        setOnErrorListener { _, what, extra ->
+                                            Log.e("Loader", "MediaPlayer error: what=$what extra=$extra")
                                             hasError = true
                                             true
                                         }
                                         prepareAsync()
                                     }
                                     mediaPlayer = mp
-                                } catch (_: Exception) {
+                                } catch (e: Exception) {
+                                    Log.e("Loader", "Exception preparing MediaPlayer: ${e.message}")
                                     hasError = true
                                 }
                             }
-
                             override fun onSurfaceTextureSizeChanged(
                                 surface: SurfaceTexture,
                                 width: Int,
                                 height: Int
                             ) {}
-
                             override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
                                 try {
                                     mediaPlayer?.stop()
@@ -113,18 +138,14 @@ fun VideoOrMorphingLoader(
                                 mediaPlayer = null
                                 return true
                             }
-
                             override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
                         }
                     }
                 },
                 modifier = Modifier.fillMaxSize()
             )
+        } else {
+            CircularProgressIndicator()
         }
-    } else {
-        // Fallback to Expressive Morphing 3D Loader
-        ExpressiveMorphingLoader(modifier = modifier, size = size)
     }
 }
-
-
