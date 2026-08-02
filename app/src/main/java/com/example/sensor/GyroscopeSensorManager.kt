@@ -37,72 +37,82 @@ class GyroscopeSensorManager(context: Context) : SensorEventListener {
     private val _tiltState = MutableStateFlow(TiltData())
     val tiltState: StateFlow<TiltData> = _tiltState.asStateFlow()
 
-    // Smooth low-pass state variables
+    // Filtered output tilt angles
     private var filteredRoll = 0f
     private var filteredPitch = 0f
-    private var targetRoll = 0f
-    private var targetPitch = 0f
 
-    // Sensor Fusion Complementary Filter Angles
-    private var compRoll = 0f
-    private var compPitch = 0f
+    // Sensor Fusion Complementary Filter State Variables
+    private var fusedRoll = 0f
+    private var fusedPitch = 0f
 
-    // Sensor auto-centering baseline
+    // Reference orientation baseline (for auto-centering)
     private var baseRoll = 0f
     private var basePitch = 0f
     private var isBaselineSet = false
 
-    private var lastEventTime: Long = 0
+    // Absolute reference angles from Accelerometer / Gravity / Rotation Vector
+    private var absRoll = 0f
+    private var absPitch = 0f
+
+    // Nanosecond timestamps for precise Gyroscope integration
+    private var lastGyroTimestamp: Long = 0L
     private var hardwareEventReceived = false
 
     private val scope = CoroutineScope(Dispatchers.Default)
     private var simulationJob: Job? = null
     private var filterJob: Job? = null
 
-    // Complementary Filter coefficient (0.92 gyro integration + 0.08 accelerometer/gravity correction)
-    private val complementaryAlpha = 0.92f
+    // Complementary filter weight for gyroscope (0.94 = 94% gyro integration + 6% gravity reference)
+    private val alphaGyro = 0.94f
 
-    // EMA physics smoothing factor for fluid motion response
-    private val smoothingFactor = 0.22f
+    // Low pass filter smoothing factor for 60fps render thread
+    private val smoothingFactor = 0.35f
 
     fun startListening() {
         hardwareEventReceived = false
         isBaselineSet = false
+        lastGyroTimestamp = 0L
 
         // Register hardware sensors for high-precision physical motion tracking
-        accelerometerSensor?.let {
-            sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
-        }
-        gravitySensor?.let {
-            sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
-        }
         gyroSensor?.let {
             sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
         rotationSensor?.let {
             sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
+        gravitySensor?.let {
+            sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+        }
+        accelerometerSensor?.let {
+            sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+        }
 
-        // Start 60 FPS motion interpolation filter loop
+        // Render thread smoothing step (~60fps)
         filterJob?.cancel()
         filterJob = scope.launch {
             while (isActive) {
-                delay(16) // ~60fps smooth physics step
+                delay(16)
                 if (hardwareEventReceived) {
-                    // Smooth transition toward target sensor angle
-                    filteredRoll += (targetRoll - filteredRoll) * smoothingFactor
-                    filteredPitch += (targetPitch - filteredPitch) * smoothingFactor
+                    // Smooth transition toward fused sensor tilt
+                    filteredRoll += (fusedRoll - filteredRoll) * smoothingFactor
+                    filteredPitch += (fusedPitch - filteredPitch) * smoothingFactor
 
                     _tiltState.value = TiltData(
                         roll = filteredRoll,
                         pitch = filteredPitch,
                         isHardwareSensorActive = true
                     )
+
+                    // Subtle auto-centering drift if user holds device still
+                    if (isBaselineSet) {
+                        baseRoll += (absRoll - baseRoll) * 0.002f
+                        basePitch += (absPitch - basePitch) * 0.002f
+                    }
                 }
             }
         }
 
-        // Fallback simulation loop for emulator / desktop preview without hardware sensor
+        // Simulation fallback loop when running on emulator / preview without hardware sensor
         simulationJob?.cancel()
         simulationJob = scope.launch {
             var time = 0f
@@ -110,11 +120,11 @@ class GyroscopeSensorManager(context: Context) : SensorEventListener {
                 delay(20)
                 if (!hardwareEventReceived) {
                     time += 0.04f
-                    val simRoll = sin(time * 1.3f) * 0.40f
-                    val simPitch = sin(time * 0.9f + 0.8f) * 0.30f
+                    val simRoll = sin(time * 1.3f) * 0.45f
+                    val simPitch = sin(time * 0.9f + 0.8f) * 0.35f
 
-                    filteredRoll += (simRoll - filteredRoll) * 0.12f
-                    filteredPitch += (simPitch - filteredPitch) * 0.12f
+                    filteredRoll += (simRoll - filteredRoll) * 0.15f
+                    filteredPitch += (simPitch - filteredPitch) * 0.15f
 
                     _tiltState.value = TiltData(
                         roll = filteredRoll,
@@ -141,9 +151,31 @@ class GyroscopeSensorManager(context: Context) : SensorEventListener {
         hardwareEventReceived = true
 
         val sensorType = event.sensor.type
-        val now = System.currentTimeMillis()
 
         when (sensorType) {
+            Sensor.TYPE_GYROSCOPE -> {
+                if (lastGyroTimestamp != 0L) {
+                    val dt = (event.timestamp - lastGyroTimestamp) / 1_000_000_000f
+                    if (dt in 0.001f..0.2f) {
+                        // Gyro angular rates in rad/s (X = pitch, Y = roll)
+                        val gyroPitchRate = event.values[0]
+                        val gyroRollRate = event.values[1]
+
+                        // Reference tilt relative to baseline
+                        val refRoll = if (isBaselineSet) (absRoll - baseRoll) else 0f
+                        val refPitch = if (isBaselineSet) (absPitch - basePitch) else 0f
+
+                        // High-frequency complementary filter integration
+                        fusedRoll = alphaGyro * (fusedRoll + gyroRollRate * dt * 1.2f) + (1f - alphaGyro) * refRoll
+                        fusedPitch = alphaGyro * (fusedPitch + gyroPitchRate * dt * 1.2f) + (1f - alphaGyro) * refPitch
+
+                        fusedRoll = fusedRoll.coerceIn(-1.5f, 1.5f)
+                        fusedPitch = fusedPitch.coerceIn(-1.5f, 1.5f)
+                    }
+                }
+                lastGyroTimestamp = event.timestamp
+            }
+
             Sensor.TYPE_ROTATION_VECTOR, Sensor.TYPE_GAME_ROTATION_VECTOR -> {
                 val rotationMatrix = FloatArray(9)
                 SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
@@ -151,72 +183,61 @@ class GyroscopeSensorManager(context: Context) : SensorEventListener {
                 val orientation = FloatArray(3)
                 SensorManager.getOrientation(rotationMatrix, orientation)
 
-                val normPitch = (orientation[1] / (Math.PI.toFloat() / 4f)).coerceIn(-1.5f, 1.5f)
-                val normRoll = (orientation[2] / (Math.PI.toFloat() / 4f)).coerceIn(-1.5f, 1.5f)
+                // Convert orientation angles to normalized tilt range (-1.0 to 1.0 representing approx 45 degrees)
+                val currentPitch = (orientation[1] / (Math.PI.toFloat() / 4f)).coerceIn(-2.0f, 2.0f)
+                val currentRoll = (orientation[2] / (Math.PI.toFloat() / 4f)).coerceIn(-2.0f, 2.0f)
+
+                absRoll = currentRoll
+                absPitch = currentPitch
 
                 if (!isBaselineSet) {
-                    baseRoll = normRoll
-                    basePitch = normPitch
+                    baseRoll = currentRoll
+                    basePitch = currentPitch
                     isBaselineSet = true
+                    fusedRoll = 0f
+                    fusedPitch = 0f
                 }
 
-                targetRoll = (normRoll - baseRoll).coerceIn(-1.2f, 1.2f)
-                targetPitch = (normPitch - basePitch).coerceIn(-1.2f, 1.2f)
+                if (gyroSensor == null) {
+                    fusedRoll = (absRoll - baseRoll).coerceIn(-1.5f, 1.5f)
+                    fusedPitch = (absPitch - basePitch).coerceIn(-1.5f, 1.5f)
+                }
             }
 
             Sensor.TYPE_GRAVITY, Sensor.TYPE_ACCELEROMETER -> {
-                val values = event.values
-                val gX = values[0]
-                val gY = values[1]
-                val gZ = values[2]
+                if (rotationSensor == null) {
+                    val gX = event.values[0]
+                    val gY = event.values[1]
+                    val gZ = event.values[2]
 
-                // Calculate tilt angles directly from Accelerometer / Gravity vector
-                val pitchRad = atan2(gY.toDouble(), sqrt((gX * gX + gZ * gZ).toDouble())).toFloat()
-                val rollRad = atan2(-gX.toDouble(), gZ.toDouble()).toFloat()
+                    val pitchRad = atan2(gY.toDouble(), sqrt((gX * gX + gZ * gZ).toDouble())).toFloat()
+                    val rollRad = atan2(-gX.toDouble(), gZ.toDouble()).toFloat()
 
-                val normPitch = (pitchRad / (Math.PI.toFloat() / 4f)).coerceIn(-1.5f, 1.5f)
-                val normRoll = (rollRad / (Math.PI.toFloat() / 4f)).coerceIn(-1.5f, 1.5f)
+                    val currentPitch = (pitchRad / (Math.PI.toFloat() / 4f)).coerceIn(-2.0f, 2.0f)
+                    val currentRoll = (rollRad / (Math.PI.toFloat() / 4f)).coerceIn(-2.0f, 2.0f)
 
-                if (!isBaselineSet) {
-                    baseRoll = normRoll
-                    basePitch = normPitch
-                    isBaselineSet = true
+                    absRoll = currentRoll
+                    absPitch = currentPitch
+
+                    if (!isBaselineSet) {
+                        baseRoll = currentRoll
+                        basePitch = currentPitch
+                        isBaselineSet = true
+                        fusedRoll = 0f
+                        fusedPitch = 0f
+                    }
+
+                    if (gyroSensor == null) {
+                        fusedRoll = (absRoll - baseRoll).coerceIn(-1.5f, 1.5f)
+                        fusedPitch = (absPitch - basePitch).coerceIn(-1.5f, 1.5f)
+                    }
                 }
-
-                val accelRoll = (normRoll - baseRoll).coerceIn(-1.2f, 1.2f)
-                val accelPitch = (normPitch - basePitch).coerceIn(-1.2f, 1.2f)
-
-                // Fuse accelerometer gravity reading with gyroscope complementary filter
-                if (gyroSensor == null) {
-                    targetRoll = accelRoll
-                    targetPitch = accelPitch
-                } else {
-                    compRoll = complementaryAlpha * compRoll + (1f - complementaryAlpha) * accelRoll
-                    compPitch = complementaryAlpha * compPitch + (1f - complementaryAlpha) * accelPitch
-                    targetRoll = compRoll
-                    targetPitch = compPitch
-                }
-            }
-
-            Sensor.TYPE_GYROSCOPE -> {
-                if (lastEventTime != 0L) {
-                    val dt = (now - lastEventTime) / 1000f
-                    // Gyroscope angular velocity integration
-                    val gyroPitchVel = event.values[0] * 1.5f
-                    val gyroRollVel = event.values[1] * 1.5f
-
-                    compPitch += gyroPitchVel * dt
-                    compRoll += gyroRollVel * dt
-
-                    targetRoll = compRoll.coerceIn(-1.2f, 1.2f)
-                    targetPitch = compPitch.coerceIn(-1.2f, 1.2f)
-                }
-                lastEventTime = now
             }
         }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 }
+
 
 

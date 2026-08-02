@@ -1,6 +1,14 @@
 package com.example.ui.components
 
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.RenderEffect
+import android.graphics.RuntimeShader
+import android.graphics.Shader
+import android.os.Build
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -33,6 +41,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -55,6 +64,7 @@ fun MotionSensorParallaxPhoto(
     modifier: Modifier = Modifier,
     foregroundCutoutBitmap: Bitmap? = null,
     backgroundInpaintedBitmap: Bitmap? = null,
+    depthBitmap: Bitmap? = null,
     depthIntensity: Float = 1.0f,
     showHologramSheen: Boolean = true,
     externalTiltData: TiltData? = null
@@ -102,15 +112,18 @@ fun MotionSensorParallaxPhoto(
         label = "animatedPitch"
     )
 
-    // Parallax translation factors in dp (Subtle reduced movement range)
-    val bgTranslationX = (-animatedRoll * 7f * depthIntensity).dp
-    val bgTranslationY = (-animatedPitch * 7f * depthIntensity).dp
+    // Parallax translation factors in dp (Enhanced responsive 3D depth range)
+    val bgTranslationX = (-animatedRoll * 16f * depthIntensity).dp
+    val bgTranslationY = (-animatedPitch * 16f * depthIntensity).dp
 
-    val midTranslationX = (animatedRoll * 3f * depthIntensity).dp
-    val midTranslationY = (animatedPitch * 3f * depthIntensity).dp
+    val midTranslationX = (animatedRoll * 6f * depthIntensity).dp
+    val midTranslationY = (animatedPitch * 6f * depthIntensity).dp
 
-    val fgTranslationX = (animatedRoll * 12f * depthIntensity).dp
-    val fgTranslationY = (animatedPitch * 12f * depthIntensity).dp
+    val fgTranslationX = (animatedRoll * 28f * depthIntensity).dp
+    val fgTranslationY = (animatedPitch * 28f * depthIntensity).dp
+
+    val shadowTranslationX = (animatedRoll * 34f * depthIntensity + 8f).dp
+    val shadowTranslationY = (animatedPitch * 34f * depthIntensity + 10f).dp
 
     val aspectRatio = if (photoBitmap != null && photoBitmap.height > 0) {
         photoBitmap.width.toFloat() / photoBitmap.height.toFloat()
@@ -134,16 +147,10 @@ fun MotionSensorParallaxPhoto(
                     },
                     onDrag = { change, dragAmount ->
                         change.consume()
-                        touchRollOffset = (touchRollOffset + dragAmount.x / 160f).coerceIn(-1.5f, 1.5f)
-                        touchPitchOffset = (touchPitchOffset + dragAmount.y / 160f).coerceIn(-1.5f, 1.5f)
+                        touchRollOffset = (touchRollOffset + dragAmount.x / 120f).coerceIn(-2.0f, 2.0f)
+                        touchPitchOffset = (touchPitchOffset + dragAmount.y / 120f).coerceIn(-2.0f, 2.0f)
                     }
                 )
-            }
-            .graphicsLayer {
-                // Subtle 3D perspective rotation for hologram feel (Reduced rotation range)
-                rotationY = animatedRoll * 4.5f * depthIntensity
-                rotationX = -animatedPitch * 4.5f * depthIntensity
-                cameraDistance = 16f * density
             }
             .clip(RoundedCornerShape(24.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
@@ -154,74 +161,149 @@ fun MotionSensorParallaxPhoto(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        // Overscale slightly to prevent edge revealing during translation
-                        scaleX = 1.20f
-                        scaleY = 1.20f
+                        // Overscale slightly to prevent edge revealing during translation and 3D rotation
+                        scaleX = 1.35f
+                        scaleY = 1.35f
+                        
+                        // Apply 3D perspective rotation to the inner contents so it looks like a 3D model inside a static frame
+                        rotationY = animatedRoll * 15f * depthIntensity
+                        rotationX = -animatedPitch * 15f * depthIntensity
+                        cameraDistance = 8f * density
                     }
             ) {
-                // Layer 1: Background Parallax Layer (Shifted negative Z)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .offset {
-                            IntOffset(
-                                bgTranslationX.toPx().roundToInt(),
-                                bgTranslationY.toPx().roundToInt()
-                            )
-                        }
-                ) {
-                    val bgSource = backgroundInpaintedBitmap ?: photoBitmap
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && depthBitmap != null) {
+                    val shader = remember(photoBitmap, depthBitmap) {
+                        val rs = RuntimeShader(DEPTH_DISPLACEMENT_SHADER)
+                        rs.setInputShader("image", BitmapShader(photoBitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP))
+                        rs.setInputShader("depthMap", BitmapShader(depthBitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP))
+                        rs.setFloatUniform("resolution", photoBitmap.width.toFloat(), photoBitmap.height.toFloat())
+                        rs
+                    }
+                    
+                    // Update uniforms for smooth animation
+                    // Increased offset to make depth parallax very visible
+                    shader.setFloatUniform("offset", animatedRoll * 40f * depthIntensity, animatedPitch * 40f * depthIntensity)
+                    
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawImage(
-                            image = bgSource.asImageBitmap(),
-                            dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt()),
-                            colorFilter = ColorFilter.colorMatrix(
-                                ColorMatrix().apply {
-                                    setToScale(0.85f, 0.85f, 0.90f, 1f)
-                                }
+                        drawContext.canvas.nativeCanvas.apply {
+                            save()
+                            val scaleX = size.width / photoBitmap.width
+                            val scaleY = size.height / photoBitmap.height
+                            
+                            // Apply local matrix to shader so it scales up the displaced pixels to the Canvas size
+                            val matrix = Matrix().apply { setScale(scaleX, scaleY) }
+                            shader.setLocalMatrix(matrix)
+                            
+                            val paint = Paint().apply {
+                                this.shader = shader
+                            }
+                            drawRect(0f, 0f, size.width, size.height, paint)
+                            restore()
+                        }
+                        
+                        // Deep space vignette to hide edge bleed
+                        drawRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.40f)),
+                                center = Offset(size.width / 2f, size.height / 2f),
+                                radius = size.width * 0.70f
                             )
                         )
                     }
-                }
-
-                // Layer 2: Midground Main Photo Layer
-                if (foregroundCutoutBitmap == null) {
+                } else {
+                    // Fallback Layered Parallax for older APIs or missing depth map
+                    // Layer 1: Background Parallax Layer (Shifted negative Z)
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .offset {
                                 IntOffset(
-                                    midTranslationX.toPx().roundToInt(),
-                                    midTranslationY.toPx().roundToInt()
+                                    bgTranslationX.toPx().roundToInt(),
+                                    bgTranslationY.toPx().roundToInt()
                                 )
                             }
                     ) {
+                        val bgSource = backgroundInpaintedBitmap ?: photoBitmap
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             drawImage(
-                                image = photoBitmap.asImageBitmap(),
-                                dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt())
+                                image = bgSource.asImageBitmap(),
+                                dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt()),
+                                colorFilter = ColorFilter.colorMatrix(
+                                    ColorMatrix().apply {
+                                        setToScale(0.80f, 0.80f, 0.85f, 1f)
+                                    }
+                                )
+                            )
+                            // Deep space vignette
+                            drawRect(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.40f)),
+                                    center = Offset(size.width / 2f, size.height / 2f),
+                                    radius = size.width * 0.70f
+                                )
                             )
                         }
                     }
-                }
 
-                // Layer 3: Foreground Parallax Cutout Layer (Shifted positive Z)
-                if (foregroundCutoutBitmap != null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .offset {
-                                IntOffset(
-                                    fgTranslationX.toPx().roundToInt(),
-                                    fgTranslationY.toPx().roundToInt()
+                    // Layer 2: Midground or Single-Photo Subject Elevation Layer
+                    if (foregroundCutoutBitmap == null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset {
+                                    IntOffset(
+                                        fgTranslationX.toPx().roundToInt(),
+                                        fgTranslationY.toPx().roundToInt()
+                                    )
+                                }
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                drawImage(
+                                    image = photoBitmap.asImageBitmap(),
+                                    dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt())
                                 )
                             }
-                    ) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            drawImage(
-                                image = foregroundCutoutBitmap.asImageBitmap(),
-                                dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt())
-                            )
+                        }
+                    }
+
+                    // Layer 3: Foreground Drop Shadow Projection
+                    if (foregroundCutoutBitmap != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset {
+                                    IntOffset(
+                                        shadowTranslationX.toPx().roundToInt(),
+                                        shadowTranslationY.toPx().roundToInt()
+                                    )
+                                }
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                drawImage(
+                                    image = foregroundCutoutBitmap.asImageBitmap(),
+                                    dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt()),
+                                    colorFilter = ColorFilter.tint(Color.Black.copy(alpha = 0.35f), BlendMode.SrcIn)
+                                )
+                            }
+                        }
+
+                        // Layer 4: Foreground Cutout Subject (Pop-out 3D Layer)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset {
+                                    IntOffset(
+                                        fgTranslationX.toPx().roundToInt(),
+                                        fgTranslationY.toPx().roundToInt()
+                                    )
+                                }
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                drawImage(
+                                    image = foregroundCutoutBitmap.asImageBitmap(),
+                                    dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt())
+                                )
+                            }
                         }
                     }
                 }

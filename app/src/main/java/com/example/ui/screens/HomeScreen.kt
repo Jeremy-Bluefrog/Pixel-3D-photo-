@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -45,6 +46,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -100,6 +105,9 @@ fun HomeScreen(
         ),
         label = "pulseScale"
     )
+
+    var depthIntensityLevel by remember { mutableFloatStateOf(1.5f) }
+    var showHologramSheen by remember { mutableStateOf(true) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -255,29 +263,99 @@ fun HomeScreen(
 
                         selectedPhoto != null -> {
                             selectedPhoto?.let { photo ->
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier.fillMaxSize()
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    if (sourceBitmap != null) {
-                                        MotionSensorParallaxPhoto(
-                                            photoBitmap = sourceBitmap,
-                                            foregroundCutoutBitmap = foregroundBitmap,
-                                            backgroundInpaintedBitmap = backgroundBitmap,
-                                            externalTiltData = tiltData,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    } else {
-                                        Parallax3DCard(
-                                            photo = photo,
-                                            tiltData = tiltData,
-                                            renderMode = Render3DMode.PARALLAX_TILT,
-                                            customDepthBitmap = depthBitmap,
-                                            foregroundBitmap = foregroundBitmap,
-                                            backgroundBitmap = backgroundBitmap,
-                                            sourceBitmap = sourceBitmap,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f, fill = false)
+                                    ) {
+                                        if (sourceBitmap != null) {
+                                            MotionSensorParallaxPhoto(
+                                                photoBitmap = sourceBitmap,
+                                                foregroundCutoutBitmap = foregroundBitmap,
+                                                backgroundInpaintedBitmap = backgroundBitmap,
+                                                depthBitmap = depthBitmap,
+                                                depthIntensity = depthIntensityLevel,
+                                                showHologramSheen = showHologramSheen,
+                                                externalTiltData = tiltData,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        } else {
+                                            Parallax3DCard(
+                                                photo = photo,
+                                                tiltData = tiltData,
+                                                renderMode = Render3DMode.PARALLAX_TILT,
+                                                customDepthBitmap = depthBitmap,
+                                                foregroundBitmap = foregroundBitmap,
+                                                backgroundBitmap = backgroundBitmap,
+                                                sourceBitmap = sourceBitmap,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    // 3D Depth Control Panel
+                                    Surface(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(16.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "3D 立體深度強度",
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = when {
+                                                        depthIntensityLevel <= 0.8f -> "標準"
+                                                        depthIntensityLevel <= 1.5f -> "強烈"
+                                                        else -> "超強 3D Pop"
+                                                    },
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.height(8.dp))
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                FilterChip(
+                                                    selected = depthIntensityLevel == 0.8f,
+                                                    onClick = { depthIntensityLevel = 0.8f },
+                                                    label = { Text("0.8x 標準") },
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                FilterChip(
+                                                    selected = depthIntensityLevel == 1.5f,
+                                                    onClick = { depthIntensityLevel = 1.5f },
+                                                    label = { Text("1.5x 強烈") },
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                FilterChip(
+                                                    selected = depthIntensityLevel == 2.2f,
+                                                    onClick = { depthIntensityLevel = 2.2f },
+                                                    label = { Text("2.2x 沉浸") },
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
