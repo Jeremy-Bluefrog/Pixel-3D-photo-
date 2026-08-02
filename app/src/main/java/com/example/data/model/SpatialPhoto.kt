@@ -6,7 +6,7 @@ data class SpatialPhoto(
     val sourceUri: String,
     val depthMapUri: String = "",
     val captureType: SpatialCaptureType = SpatialCaptureType.AI_CONVERTED_2D,
-    val depthIntensity: Float = 1.2f,
+    val depthIntensity: Float = 0.5f,
     val focalPlane: Float = 0.5f,
     val blurAmount: Float = 6.0f,
     val layerSeparation: Float = 1.5f,

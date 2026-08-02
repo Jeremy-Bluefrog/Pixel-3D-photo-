@@ -104,7 +104,7 @@ object GeminiDepthClient {
                 mainSubject = "前景焦點主體 (邊緣高光分離)",
                 midground = "中間景深層 (漸進式視差位移)",
                 background = "遙遠背景 (景深散景羽化)",
-                depthIntensity = 1.4f,
+                depthIntensity = 0.5f,
                 focalPlane = 0.45f,
                 popRating = 9,
                 depthBreakdownJson = "{}"
@@ -149,7 +149,7 @@ object GeminiDepthClient {
                 mainSubject = extractSection(textResult, "前景", "主體物體邊緣清晰，從背景中分離出來"),
                 midground = extractSection(textResult, "中景", "包含漸進式深度層與中間距離景物"),
                 background = extractSection(textResult, "背景", "遙遠背景與漸變光影"),
-                depthIntensity = 1.5f,
+                depthIntensity = 0.5f,
                 focalPlane = 0.45f,
                 popRating = 9,
                 depthBreakdownJson = textResult
@@ -161,7 +161,7 @@ object GeminiDepthClient {
                 mainSubject = "機器學習前景層 (預設焦點)",
                 midground = "中間景深層",
                 background = "遠景散景背景",
-                depthIntensity = 1.3f,
+                depthIntensity = 0.5f,
                 focalPlane = 0.5f,
                 popRating = 8,
                 depthBreakdownJson = "{}"

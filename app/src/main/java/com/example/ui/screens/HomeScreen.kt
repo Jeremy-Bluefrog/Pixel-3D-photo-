@@ -106,7 +106,7 @@ fun HomeScreen(
         label = "pulseScale"
     )
 
-    var depthIntensityLevel by remember { mutableFloatStateOf(1.5f) }
+    var depthIntensityLevel by remember { mutableFloatStateOf(0.5f) }
     var showHologramSheen by remember { mutableStateOf(true) }
 
     Scaffold(
@@ -300,63 +300,7 @@ fun HomeScreen(
 
                                     Spacer(modifier = Modifier.height(16.dp))
 
-                                    // 3D Depth Control Panel
-                                    Surface(
-                                        shape = RoundedCornerShape(20.dp),
-                                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(16.dp)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = "3D 立體深度強度",
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
-                                                Text(
-                                                    text = when {
-                                                        depthIntensityLevel <= 0.8f -> "標準"
-                                                        depthIntensityLevel <= 1.5f -> "強烈"
-                                                        else -> "超強 3D Pop"
-                                                    },
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.height(8.dp))
-
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                FilterChip(
-                                                    selected = depthIntensityLevel == 0.8f,
-                                                    onClick = { depthIntensityLevel = 0.8f },
-                                                    label = { Text("0.8x 標準") },
-                                                    modifier = Modifier.weight(1f)
-                                                )
-                                                FilterChip(
-                                                    selected = depthIntensityLevel == 1.5f,
-                                                    onClick = { depthIntensityLevel = 1.5f },
-                                                    label = { Text("1.5x 強烈") },
-                                                    modifier = Modifier.weight(1f)
-                                                )
-                                                FilterChip(
-                                                    selected = depthIntensityLevel == 2.2f,
-                                                    onClick = { depthIntensityLevel = 2.2f },
-                                                    label = { Text("2.2x 沉浸") },
-                                                    modifier = Modifier.weight(1f)
-                                                )
-                                            }
-                                        }
-                                    }
+                                    // 3D intensity level is fixed to 0.5 as requested
                                 }
                             }
                         }

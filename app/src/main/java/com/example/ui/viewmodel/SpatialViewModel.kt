@@ -51,7 +51,7 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
     private val _heatmapPalette = MutableStateFlow(DepthHeatmapPalette.GRAYSCALE)
     val heatmapPalette: StateFlow<DepthHeatmapPalette> = _heatmapPalette.asStateFlow()
 
-    private val _depthIntensity = MutableStateFlow(1.4f)
+    private val _depthIntensity = MutableStateFlow(0.5f)
     val depthIntensity: StateFlow<Float> = _depthIntensity.asStateFlow()
 
     private val _focalPlane = MutableStateFlow(0.45f)
@@ -208,7 +208,7 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
                     mainSubject = "本機 AI 前景焦點主體",
                     midground = "漸進視差中景層",
                     background = "景深散景背景層",
-                    depthIntensity = 1.5f,
+                    depthIntensity = 0.5f,
                     focalPlane = _focalPlane.value,
                     popRating = 10,
                     depthBreakdownJson = "{}"
@@ -277,7 +277,7 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
                 mainSubject = "本機 AI 前景焦點主體",
                 midground = "漸進視差中景層",
                 background = "景深散景背景層",
-                depthIntensity = 1.5f,
+                depthIntensity = 0.5f,
                 focalPlane = _focalPlane.value,
                 popRating = 10,
                 depthBreakdownJson = "{}"
@@ -344,7 +344,7 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
                 mainSubject = "雙鏡頭主體焦點",
                 midground = "立體視差過渡層",
                 background = "遠景背景",
-                depthIntensity = 1.8f,
+                depthIntensity = 0.5f,
                 focalPlane = 0.40f,
                 popRating = 10,
                 depthBreakdownJson = "{}"
@@ -355,7 +355,7 @@ class SpatialViewModel(application: Application) : AndroidViewModel(application)
                 sourceUri = "pixel9_dual_${System.currentTimeMillis()}",
                 depthMapUri = "pixel9_dual_depth_${System.currentTimeMillis()}",
                 captureType = SpatialCaptureType.PIXEL9_DUAL_CAMERA_SPATIAL,
-                depthIntensity = 1.8f,
+                depthIntensity = 0.5f,
                 focalPlane = 0.40f,
                 layerSeparation = 2.0f,
                 aiAnalysis = "【Pixel 9 Pro 空間雙鏡頭聯防拍攝】\n主鏡頭 (24mm) + 超廣角鏡頭 (12mm) 雙路物理距離基線記錄。\n真實光學視差深度比率: 1:1.8\n" + aiResultText,
