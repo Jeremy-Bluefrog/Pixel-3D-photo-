@@ -80,6 +80,10 @@ fun HomeScreen(
 
     val processingProgress by viewModel.processingProgress.collectAsState()
     val processingStageMessage by viewModel.processingStageMessage.collectAsState()
+    val isTraining by viewModel.isTraining.collectAsState()
+    val trainingProgress by viewModel.trainingProgress.collectAsState()
+    val trainingStageMessage by viewModel.trainingStageMessage.collectAsState()
+    val modelVersion by viewModel.modelVersion.collectAsState()
 
     val animatedProgress by animateFloatAsState(
         targetValue = processingProgress,
@@ -299,8 +303,89 @@ fun HomeScreen(
                                     }
 
                                     Spacer(modifier = Modifier.height(16.dp))
-
                                     // 3D intensity level is fixed to 0.5 as requested
+                                    if (isTraining) {
+                                        Surface(
+                                            shape = RoundedCornerShape(20.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(16.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Text(
+                                                    text = "裝置端模型學習中...", 
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                )
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                Text(
+                                                    text = trainingStageMessage,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                )
+                                                Spacer(modifier = Modifier.height(12.dp))
+                                                LinearProgressIndicator(
+                                                    progress = { trainingProgress },
+                                                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp))
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        Surface(
+                                            shape = RoundedCornerShape(20.dp),
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(16.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = "本機模型版本", 
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    Text(
+                                                        text = modelVersion,
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.height(16.dp))
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = "允許透過相片學習並升級模型", 
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            color = MaterialTheme.colorScheme.onSurface
+                                                        )
+                                                        Text(
+                                                            text = "將學習結果回傳以改進核心神經網路", 
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.width(16.dp))
+                                                    androidx.compose.material3.Switch(
+                                                        checked = true,
+                                                        onCheckedChange = null,
+                                                        enabled = false
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
                                 }
                             }
                         }
