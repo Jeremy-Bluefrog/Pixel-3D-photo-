@@ -70,10 +70,6 @@ fun Parallax3DCard(
     val effectiveRoll = tiltData.roll
     val effectivePitch = tiltData.pitch
 
-    // Touch interactive drag state
-    var touchRollOffset by remember { mutableFloatStateOf(0f) }
-    var touchPitchOffset by remember { mutableFloatStateOf(0f) }
-
     // Wiggle stereogram animation timer
     val wiggleAnim = remember { Animatable(0f) }
     LaunchedEffect(renderMode) {
@@ -91,13 +87,13 @@ fun Parallax3DCard(
     val rawRoll = if (renderMode == Render3DMode.WIGGLE_STEREOGRAM) {
         if (wiggleAnim.value > 0.5f) 0.9f else -0.9f
     } else {
-        effectiveRoll + touchRollOffset
+        effectiveRoll
     }
 
     val rawPitch = if (renderMode == Render3DMode.WIGGLE_STEREOGRAM) {
         0f
     } else {
-        effectivePitch + touchPitchOffset
+        effectivePitch
     }
 
     // Smooth physics spring interpolation for realistic fluid spatial movement
@@ -118,23 +114,6 @@ fun Parallax3DCard(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(photo.width.toFloat() / photo.height.toFloat().coerceAtLeast(1f))
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragEnd = {
-                        touchRollOffset = 0f
-                        touchPitchOffset = 0f
-                    },
-                    onDragCancel = {
-                        touchRollOffset = 0f
-                        touchPitchOffset = 0f
-                    },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        touchRollOffset = (touchRollOffset + dragAmount.x / 180f).coerceIn(-1.5f, 1.5f)
-                        touchPitchOffset = (touchPitchOffset + dragAmount.y / 180f).coerceIn(-1.5f, 1.5f)
-                    }
-                )
-            }
             .clip(RoundedCornerShape(28.dp))
             .background(MaterialTheme.colorScheme.surfaceContainer)
             .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(28.dp))

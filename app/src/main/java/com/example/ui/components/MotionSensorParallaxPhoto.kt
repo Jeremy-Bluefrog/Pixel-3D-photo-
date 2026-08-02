@@ -86,12 +86,8 @@ fun MotionSensorParallaxPhoto(
     val sensorTilt by sensorManager.tiltState.collectAsState()
     val activeTilt = externalTiltData ?: sensorTilt
 
-    // Touch interaction drag offsets for manual tilt
-    var touchRollOffset by remember { mutableFloatStateOf(0f) }
-    var touchPitchOffset by remember { mutableFloatStateOf(0f) }
-
-    val rawRoll = (activeTilt.roll + touchRollOffset).coerceIn(-2f, 2f)
-    val rawPitch = (activeTilt.pitch + touchPitchOffset).coerceIn(-2f, 2f)
+    val rawRoll = activeTilt.roll.coerceIn(-2f, 2f)
+    val rawPitch = activeTilt.pitch.coerceIn(-2f, 2f)
 
     // Smooth physics spring interpolation
     val animatedRoll by animateFloatAsState(
@@ -135,23 +131,6 @@ fun MotionSensorParallaxPhoto(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(aspectRatio)
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragEnd = {
-                        touchRollOffset = 0f
-                        touchPitchOffset = 0f
-                    },
-                    onDragCancel = {
-                        touchRollOffset = 0f
-                        touchPitchOffset = 0f
-                    },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        touchRollOffset = (touchRollOffset + dragAmount.x / 120f).coerceIn(-2.0f, 2.0f)
-                        touchPitchOffset = (touchPitchOffset + dragAmount.y / 120f).coerceIn(-2.0f, 2.0f)
-                    }
-                )
-            }
             .clip(RoundedCornerShape(24.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
@@ -181,8 +160,10 @@ fun MotionSensorParallaxPhoto(
                     }
                     
                     // Update uniforms for smooth animation
-                    // Increased offset to make depth parallax very visible
-                    shader.setFloatUniform("offset", animatedRoll * 40f * depthIntensity, animatedPitch * 40f * depthIntensity)
+                    // 根據圖片解析度動態計算偏移量 (最大 10% 偏移)
+                    val maxOffsetX = photoBitmap.width * 0.1f
+                    val maxOffsetY = photoBitmap.height * 0.1f
+                    shader.setFloatUniform("offset", animatedRoll * maxOffsetX * depthIntensity, animatedPitch * maxOffsetY * depthIntensity)
                     
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         drawContext.canvas.nativeCanvas.apply {

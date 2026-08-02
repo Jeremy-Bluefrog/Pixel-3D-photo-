@@ -89,7 +89,7 @@ fun VideoOrMorphingLoader(
         // Inner pulsing core
         Box(
             modifier = Modifier
-                .size(size * 0.55f * pulseScale)
+                .size(size * (0.55f * pulseScale))
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(
