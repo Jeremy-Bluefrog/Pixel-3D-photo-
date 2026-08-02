@@ -215,55 +215,65 @@ object DepthMapGenerator {
         depthBitmap: Bitmap,
         threshold: Float = 0.45f
     ): Bitmap = withContext(Dispatchers.Default) {
-        val width = sourceBitmap.width
-        val height = sourceBitmap.height
+        val origW = sourceBitmap.width
+        val origH = sourceBitmap.height
 
+        // Downsample for fast, real-time inpainting (max 512px)
+        val maxDim = 512
+        val scale = if (kotlin.math.max(origW, origH) > maxDim) maxDim.toFloat() / kotlin.math.max(origW, origH) else 1.0f
+        val width = (origW * scale).toInt().coerceAtLeast(1)
+        val height = (origH * scale).toInt().coerceAtLeast(1)
+
+        val scaledSrc = if (scale < 1.0f) Bitmap.createScaledBitmap(sourceBitmap, width, height, true) else sourceBitmap
         val scaledDepth = Bitmap.createScaledBitmap(depthBitmap, width, height, true)
 
         val srcPixels = IntArray(width * height)
         val depthPixels = IntArray(width * height)
         val resultPixels = IntArray(width * height)
 
-        sourceBitmap.getPixels(srcPixels, 0, width, 0, 0, width, height)
+        scaledSrc.getPixels(srcPixels, 0, width, 0, 0, width, height)
         scaledDepth.getPixels(depthPixels, 0, width, 0, 0, width, height)
 
         val isBg = BooleanArray(width * height)
         for (i in 0 until width * height) {
             val depthValue = Color.red(depthPixels[i]) / 255f
-            // Mark pixels as background if they are below the threshold (with some margin)
             isBg[i] = depthValue < threshold - 0.05f
             if (isBg[i]) {
                 resultPixels[i] = srcPixels[i]
             }
         }
 
-        // Fast Inpainting using Distance-Weighted 4-Directional Propagation
+        // Fast Inpainting using Bounded Distance-Weighted 4-Directional Search (max 64px)
+        val maxSearch = 64
         for (y in 0 until height) {
+            val yOffset = y * width
             for (x in 0 until width) {
-                val i = y * width + x
+                val i = yOffset + x
                 if (!isBg[i]) {
-                    var leftColor = srcPixels[i]
-                    var leftDist = width
-                    for (dx in x downTo 0) {
-                        if (isBg[y * width + dx]) { leftColor = srcPixels[y * width + dx]; leftDist = x - dx; break }
+                    var leftColor = srcPixels[i]; var leftDist = maxSearch
+                    val minX = (x - maxSearch).coerceAtLeast(0)
+                    for (dx in x - 1 downTo minX) {
+                        if (isBg[yOffset + dx]) { leftColor = srcPixels[yOffset + dx]; leftDist = x - dx; break }
                     }
-                    var rightColor = srcPixels[i]
-                    var rightDist = width
-                    for (dx in x until width) {
-                        if (isBg[y * width + dx]) { rightColor = srcPixels[y * width + dx]; rightDist = dx - x; break }
+
+                    var rightColor = srcPixels[i]; var rightDist = maxSearch
+                    val maxX = (x + maxSearch).coerceAtMost(width - 1)
+                    for (dx in x + 1..maxX) {
+                        if (isBg[yOffset + dx]) { rightColor = srcPixels[yOffset + dx]; rightDist = dx - x; break }
                     }
-                    var upColor = srcPixels[i]
-                    var upDist = height
-                    for (dy in y downTo 0) {
+
+                    var upColor = srcPixels[i]; var upDist = maxSearch
+                    val minY = (y - maxSearch).coerceAtLeast(0)
+                    for (dy in y - 1 downTo minY) {
                         if (isBg[dy * width + x]) { upColor = srcPixels[dy * width + x]; upDist = y - dy; break }
                     }
-                    var downColor = srcPixels[i]
-                    var downDist = height
-                    for (dy in y until height) {
+
+                    var downColor = srcPixels[i]; var downDist = maxSearch
+                    val maxY = (y + maxSearch).coerceAtMost(height - 1)
+                    for (dy in y + 1..maxY) {
                         if (isBg[dy * width + x]) { downColor = srcPixels[dy * width + x]; downDist = dy - y; break }
                     }
 
-                    // Weight by inverse squared distance for better edge preservation and smooth blending
                     val wl = 1f / (leftDist * leftDist + 1f)
                     val wr = 1f / (rightDist * rightDist + 1f)
                     val wu = 1f / (upDist * upDist + 1f)
@@ -279,28 +289,36 @@ object DepthMapGenerator {
             }
         }
 
-        // Apply a fast 5x5 blur ONLY on the inpainted regions to smooth out the propagation seams
+        // Apply a fast 5x5 blur ONLY on the inpainted regions
         val finalPixels = resultPixels.copyOf()
         for (y in 2 until height - 2) {
+            val yOffset = y * width
             for (x in 2 until width - 2) {
-                if (!isBg[y * width + x]) {
+                val i = yOffset + x
+                if (!isBg[i]) {
                     var sr = 0; var sg = 0; var sb = 0
                     for (dy in -2..2) {
+                        val nyOffset = (y + dy) * width
                         for (dx in -2..2) {
-                            val c = resultPixels[(y + dy) * width + (x + dx)]
+                            val c = resultPixels[nyOffset + (x + dx)]
                             sr += Color.red(c)
                             sg += Color.green(c)
                             sb += Color.blue(c)
                         }
                     }
-                    finalPixels[y * width + x] = Color.rgb(sr / 25, sg / 25, sb / 25)
+                    finalPixels[i] = Color.rgb(sr / 25, sg / 25, sb / 25)
                 }
             }
         }
 
-        val bgBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        bgBitmap.setPixels(finalPixels, 0, width, 0, 0, width, height)
-        bgBitmap
+        val lowResBg = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        lowResBg.setPixels(finalPixels, 0, width, 0, 0, width, height)
+
+        if (scale < 1.0f) {
+            Bitmap.createScaledBitmap(lowResBg, origW, origH, true)
+        } else {
+            lowResBg
+        }
     }
 
     fun mapDepthToColor(depth: Float, palette: DepthHeatmapPalette): Int {

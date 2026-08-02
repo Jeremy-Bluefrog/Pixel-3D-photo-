@@ -55,12 +55,13 @@ import androidx.compose.ui.unit.dp
 import com.example.data.model.Render3DMode
 import com.example.ui.components.VideoOrMorphingLoader
 import com.example.ui.components.Parallax3DCard
+import com.example.ui.components.MotionSensorParallaxPhoto
 import com.example.ui.viewmodel.SpatialViewModel
 
 @Composable
 fun HomeScreen(
     viewModel: SpatialViewModel,
-    onStartOverlay: () -> Unit
+    onStartOverlay: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val selectedPhoto by viewModel.selectedPhoto.collectAsState()
@@ -258,16 +259,26 @@ fun HomeScreen(
                                     contentAlignment = Alignment.Center,
                                     modifier = Modifier.fillMaxSize()
                                 ) {
-                                    Parallax3DCard(
-                                        photo = photo,
-                                        tiltData = tiltData,
-                                        renderMode = Render3DMode.PARALLAX_TILT,
-                                        customDepthBitmap = depthBitmap,
-                                        foregroundBitmap = foregroundBitmap,
-                                        backgroundBitmap = backgroundBitmap,
-                                        sourceBitmap = sourceBitmap,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
+                                    if (sourceBitmap != null) {
+                                        MotionSensorParallaxPhoto(
+                                            photoBitmap = sourceBitmap,
+                                            foregroundCutoutBitmap = foregroundBitmap,
+                                            backgroundInpaintedBitmap = backgroundBitmap,
+                                            externalTiltData = tiltData,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        Parallax3DCard(
+                                            photo = photo,
+                                            tiltData = tiltData,
+                                            renderMode = Render3DMode.PARALLAX_TILT,
+                                            customDepthBitmap = depthBitmap,
+                                            foregroundBitmap = foregroundBitmap,
+                                            backgroundBitmap = backgroundBitmap,
+                                            sourceBitmap = sourceBitmap,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -333,20 +344,6 @@ fun HomeScreen(
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(text = "選取照片")
-                                    }
-
-                                    Spacer(modifier = Modifier.height(16.dp))
-
-                                    Button(
-                                        onClick = { onStartOverlay() },
-                                        modifier = Modifier.fillMaxWidth(0.8f).height(56.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.AutoAwesome,
-                                            contentDescription = null
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(text = "開啟圖庫截圖按鈕")
                                     }
                                 }
                             }
